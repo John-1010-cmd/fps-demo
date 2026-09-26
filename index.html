@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>火线运输船 · FPS</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "./js/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- 载入 -->
+<div id="loading" class="overlay visible">
+  <div class="load-box">
+    <div class="load-title">火线运输船</div>
+    <div class="load-bar"><div id="load-progress"></div></div>
+    <div id="load-text">正在装载资源...</div>
+  </div>
+</div>
+
+<!-- 主菜单 -->
+<div id="menu-main" class="overlay">
+  <div class="menu-bg"></div>
+  <div class="menu-content">
+    <div class="game-logo">
+      <div class="logo-main">火线运输船</div>
+      <div class="logo-sub">CARGO SHIP &mdash; TEAM DEATHMATCH</div>
+    </div>
+    <div class="menu-buttons">
+      <button id="btn-start" class="btn btn-primary">开始战斗</button>
+      <button id="btn-settings" class="btn">游戏设置</button>
+      <button id="btn-help" class="btn">操作说明</button>
+    </div>
+    <div class="diff-row">
+      <span class="diff-label">AI 难度</span>
+      <label><input type="radio" name="difficulty" value="easy"> 简单</label>
+      <label><input type="radio" name="difficulty" value="normal" checked> 普通</label>
+      <label><input type="radio" name="difficulty" value="hard"> 困难</label>
+    </div>
+    <div class="menu-footer">团队死斗 5v5 · 率先取得 50 次击杀获胜 · 建议使用 Chrome / Edge 浏览器</div>
+  </div>
+</div>
+
+<!-- 设置 -->
+<div id="menu-settings" class="overlay">
+  <div class="panel">
+    <div class="panel-title">游戏设置</div>
+    <div class="set-row"><span>鼠标灵敏度</span><input id="set-sens" type="range" min="0.3" max="3" step="0.1" value="1"><b id="set-sens-val">1.0</b></div>
+    <div class="set-row"><span>视野 (FOV)</span><input id="set-fov" type="range" min="60" max="100" step="1" value="75"><b id="set-fov-val">75</b></div>
+    <div class="set-row"><span>音量</span><input id="set-volume" type="range" min="0" max="1" step="0.05" value="0.8"><b id="set-volume-val">80%</b></div>
+    <div class="set-row"><span>画质</span>
+      <select id="set-quality">
+        <option value="high">高（阴影 + 高分辨率）</option>
+        <option value="medium" selected>中（阴影）</option>
+        <option value="low">低（流畅优先）</option>
+      </select><b></b>
+    </div>
+    <div class="set-row"><span>显示帧率</span><input id="set-fps" type="checkbox" checked><b></b></div>
+    <button id="btn-settings-back" class="btn btn-primary">返回</button>
+  </div>
+</div>
+
+<!-- 操作说明 -->
+<div id="menu-help" class="overlay">
+  <div class="panel">
+    <div class="panel-title">操作说明</div>
+    <div class="help-grid">
+      <span>W / A / S / D</span><span>移动</span>
+      <span>鼠标</span><span>视角 / 瞄准</span>
+      <span>左键</span><span>射击 / 挥砍 / 投掷手里剑</span>
+      <span>右键</span><span>机瞄 / 狙击开镜</span>
+      <span>Shift / C / 空格</span><span>冲刺 / 蹲伏 / 跳跃</span>
+      <span>R</span><span>换弹</span>
+      <span>1 / 2 / 3 / 4</span><span>步枪 / 霰弹枪 / 狙击枪 / 手枪（滚轮也可）</span>
+      <span>5（连按）</span><span>近战：匕首 → 斧头 → 铁铲 → 手里剑</span>
+      <span>6（连按）</span><span>选择投掷物：手雷 → 烟雾弹 → 闪光弹</span>
+      <span>G / 鼠标中键</span><span>投掷当前投掷物</span>
+      <span>Tab / Esc</span><span>计分板 / 暂停</span>
+    </div>
+    <div class="help-tip">提示：爆头造成双倍伤害；霰弹枪近距毁伤极高；烟雾弹可阻断 AI 视线；闪光弹致盲正对爆点的敌人；击杀后 5 秒未受伤会缓慢回血；中央高台是狙击热点。</div>
+    <button id="btn-help-back" class="btn btn-primary">返回</button>
+  </div>
+</div>
+
+<!-- 暂停 -->
+<div id="menu-pause" class="overlay">
+  <div class="panel">
+    <div class="panel-title">已暂停</div>
+    <div class="menu-buttons">
+      <button id="btn-resume" class="btn btn-primary">继续战斗</button>
+      <button id="btn-pause-settings" class="btn">游戏设置</button>
+      <button id="btn-quit" class="btn btn-danger">退出到主菜单</button>
+    </div>
+    <div class="menu-footer">若鼠标未锁定，点击画面任意处即可继续</div>
+  </div>
+</div>
+
+<!-- 结算 -->
+<div id="menu-end" class="overlay">
+  <div class="panel panel-wide">
+    <div id="end-title" class="panel-title">胜利</div>
+    <div id="end-score" class="end-score">40 : 26</div>
+    <table class="sb-table"><thead><tr><th>玩家</th><th>击杀</th><th>死亡</th><th>K/D</th></tr></thead><tbody id="end-body"></tbody></table>
+    <div class="menu-buttons row">
+      <button id="btn-restart" class="btn btn-primary">再来一局</button>
+      <button id="btn-end-menu" class="btn">回主菜单</button>
+    </div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <canvas id="minimap" width="176" height="176"></canvas>
+  <div id="team-scores">
+    <span class="ts-blue">保卫者 <b id="score-blue">0</b></span>
+    <span id="match-timer">10:00</span>
+    <span class="ts-red"><b id="score-red">0</b> 潜伏者</span>
+  </div>
+  <div id="killfeed"></div>
+  <div id="fps-counter">60</div>
+
+  <div id="crosshair">
+    <div class="ch-line ch-t"></div><div class="ch-line ch-b"></div>
+    <div class="ch-line ch-l"></div><div class="ch-line ch-r"></div>
+    <div class="ch-dot"></div>
+  </div>
+  <div id="hitmarker">
+    <span></span><span></span><span></span><span></span>
+  </div>
+
+  <div id="scope-overlay"><div class="scope-ring"></div><div class="scope-h"></div><div class="scope-v"></div></div>
+  <div id="vignette"></div>
+  <div id="dir-hit"></div>
+  <div id="flash-overlay"></div>
+
+  <div id="banner"><div id="banner-main"></div><div id="banner-sub"></div></div>
+
+  <div id="hud-bl">
+    <div class="hp-row"><span class="hp-label">生命</span><div class="hp-bar"><div id="health-bar"></div></div><b id="health-num">100</b></div>
+    <div id="stance-row"><span id="stance-txt">站立</span><span id="regen-txt"></span></div>
+  </div>
+
+  <div id="hud-br">
+    <div id="weapon-name">AK-47 突击步枪</div>
+    <div class="ammo-row"><b id="ammo-mag">30</b><span class="ammo-sep">/</span><span id="ammo-reserve">120</span></div>
+    <div id="nade-row"><span class="nade-ico">●</span><span id="nade-count">手雷×2</span><span class="nade-label">投掷 (G/6)</span></div>
+    <div id="reload-txt"></div>
+  </div>
+
+  <div id="hint">点击画面锁定鼠标</div>
+
+  <div id="respawn-overlay">
+    <div class="rs-title">你已阵亡</div>
+    <div id="respawn-killer">被 敌人 击杀</div>
+    <div id="respawn-timer">3</div>
+  </div>
+
+  <div id="scoreboard">
+    <div class="sb-head">计分板 &mdash; 团队死斗</div>
+    <table class="sb-table"><thead><tr><th>玩家</th><th>击杀</th><th>死亡</th><th>K/D</th></tr></thead><tbody id="sb-body"></tbody></table>
+  </div>
+</div>
+
+<div id="error-overlay"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
