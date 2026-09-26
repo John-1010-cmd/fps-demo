@@ -169,6 +169,40 @@ export function buildWorld(scene) {
   );
   scene.add(sky);
 
+  // 独立动态云层球（半透明漂移云层）
+  const texClouds = canvasTexture(1024, 512, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    for (let i = 0; i < 20; i++) {
+      const alpha = rand(0.15, 0.32);
+      const gray = Math.floor(rand(200, 245));
+      g.fillStyle = `rgba(${gray},${gray},${Math.min(255, gray + 8)},${alpha})`;
+      const cx = rand(0, w);
+      const cy = rand(h * 0.08, h * 0.5);
+      const rx = rand(50, 150);
+      const ry = rand(10, 26);
+      const drawCloud = (x) => {
+        g.beginPath();
+        g.ellipse(x, cy, rx, ry, 0, 0, 7);
+        g.fill();
+      };
+      drawCloud(cx);
+      if (cx - rx < 0) drawCloud(cx + w);
+      if (cx + rx > w) drawCloud(cx - w);
+    }
+  });
+  const clouds = new THREE.Mesh(
+    new THREE.SphereGeometry(700, 24, 16),
+    new THREE.MeshBasicMaterial({
+      map: texClouds,
+      transparent: true,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    })
+  );
+  scene.add(clouds);
+  dynamic.clouds = clouds;
+
   // 海面
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(1600, 1600),
@@ -287,15 +321,28 @@ export function buildWorld(scene) {
   container(8, -22, 'z', 6, 0, 5);
   container(-8, -22, 'z', 6, 0, 0);
 
-  // 木箱掩体群
-  const crates = [
-    [-10.4, 6], [-9.1, 6.2], [-10.2, -4.5], [10.4, -6], [9.1, -6.2], [10.2, 4.5],
-    [-2.2, 8.6], [2.2, -8.6], [-10.6, 26.5], [10.6, -26.5],
-    [-6.8, 17.5], [6.8, -17.5], [0.6, 18.5], [-0.6, -18.5],
+  // 木箱掩体群（三档规格，点对称布局）：
+  // 1. 矮箱（宽深 1.15m、高 0.8m）：低于跳跃极限约 0.97m（jump=5.4、gravity=15），玩家可直接跳上作为射击平台
+  // 2. 中箱（宽深 1.15m、高 1.45m）：大于 0.97m 跳跃极限无法直接跳上，高于蹲姿(1.28m)提供蹲伏掩护；在 x=±9 处与旁边矮箱衔接构成 0.8m→1.45m 阶梯
+  // 3. 高箱（宽深 1.35m、高 2.1m）：高于站立身高(1.75m)提供完全掩护；取代原双层堆叠箱
+  const lowCrates = [
+    [-10.4, 6], [10.4, -6],
+    [-2.2, 8.6], [2.2, -8.6],
+    [-6.8, 17.5], [6.8, -17.5],
   ];
-  for (const [x, z] of crates) crate(x, z);
-  crate(0.6, 18.5, 1.15, 1.15);   // 双层箱（可跳上）
-  crate(-0.6, -18.5, 1.15, 1.15);
+  for (const [x, z] of lowCrates) box(x, 0, z, 1.15, 0.8, 1.15, matWood);
+
+  const midCrates = [
+    [-9.1, 6.2], [9.1, -6.2],
+    [-10.6, 26.5], [10.6, -26.5],
+  ];
+  for (const [x, z] of midCrates) box(x, 0, z, 1.15, 1.45, 1.15, matWood);
+
+  const highCrates = [
+    [-10.2, -4.5], [10.2, 4.5],
+    [0.6, 18.5], [-0.6, -18.5],
+  ];
+  for (const [x, z] of highCrates) box(x, 0, z, 1.35, 2.1, 1.35, matWood);
 
   // 油桶
   for (const [x, z] of [[-11.2, -14], [-10.4, -13.4], [-11, -12.8], [11.2, 14], [10.4, 13.4], [11, 12.8],
@@ -335,6 +382,12 @@ export function buildWorld(scene) {
       pos.needsUpdate = true;
     }
     if (dynamic.radars) for (const r of dynamic.radars) r.rotation.y += dt * 0.8;
+    if (dynamic.clouds) dynamic.clouds.rotation.y += dt * 0.005;
+
+    // 太阳光照与位置缓慢起伏
+    dynamic.sunT = (dynamic.sunT || 0) + dt;
+    sun.position.set(-45 + Math.sin(dynamic.sunT * 0.02) * 10, 60, -70 + Math.cos(dynamic.sunT * 0.014) * 8);
+    sun.intensity = 3.4 + Math.sin(dynamic.sunT * 0.05) * 0.35;
   }
 
   return world;

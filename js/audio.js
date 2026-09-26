@@ -202,6 +202,12 @@ export class AudioEngine {
     });
   }
 
+  killConfirm() { // 击杀确认音
+    if (!this.ctx) return;
+    this._tone(1900, 0.06, { gain: 0.22 }).connect(this.sfx);
+    setTimeout(() => this.ctx && this._tone(2600, 0.09, { gain: 0.16 }).connect(this.sfx), 40);
+  }
+
   win(win) {
     if (!this.ctx) return;
     const notes = win ? [523, 659, 784, 1046] : [392, 330, 262, 196];

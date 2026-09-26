@@ -47,6 +47,12 @@ function syncSettingsUI() {
   $('set-volume-val').textContent = Math.round(s.volume * 100) + '%';
   document.querySelector(`input[name=difficulty][value=${s.difficulty || 'normal'}]`)?.click?.() ??
     document.querySelectorAll('input[name=difficulty]').forEach(r => r.checked = r.value === s.difficulty);
+  document.querySelectorAll('input[name=teamsize]').forEach(r => { r.checked = r.value === String(s.teamSize || 5); });
+  document.querySelectorAll('input[name=gamemode]').forEach(r => { r.checked = r.value === (s.gamemode || 'score'); });
+  document.querySelectorAll('input[name=timelimit]').forEach(r => { r.checked = r.value === String(s.timeLimit || 600); });
+  const isTime = (s.gamemode || 'score') === 'time';
+  document.querySelectorAll('input[name=timelimit]').forEach(r => r.disabled = !isTime);
+  document.getElementById('timelimit-row').classList.toggle('disabled', !isTime);
 }
 function readSettingsUI() {
   game.applySettings({
@@ -56,6 +62,9 @@ function readSettingsUI() {
     quality: ui.quality.value,
     fps: ui.fps.checked,
     difficulty: document.querySelector('input[name=difficulty]:checked')?.value || 'normal',
+    teamSize: parseInt(document.querySelector('input[name=teamsize]:checked')?.value || 5),
+    gamemode: document.querySelector('input[name=gamemode]:checked')?.value || 'score',
+    timeLimit: parseInt(document.querySelector('input[name=timelimit]:checked')?.value || 600),
   });
   saveSettings();
   syncSettingsUI();
@@ -64,6 +73,9 @@ for (const el of [ui.sens, ui.fov, ui.volume, ui.quality, ui.fps]) {
   el.addEventListener('input', readSettingsUI);
 }
 document.querySelectorAll('input[name=difficulty]').forEach(r => r.addEventListener('change', readSettingsUI));
+document.querySelectorAll('input[name=teamsize]').forEach(r => r.addEventListener('change', readSettingsUI));
+document.querySelectorAll('input[name=gamemode]').forEach(r => r.addEventListener('change', readSettingsUI));
+document.querySelectorAll('input[name=timelimit]').forEach(r => r.addEventListener('change', readSettingsUI));
 
 game.applySettings({ ...loadSettings() });
 syncSettingsUI();

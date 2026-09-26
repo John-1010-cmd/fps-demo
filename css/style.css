@@ -85,7 +85,9 @@ html,body { width:100%; height:100%; overflow:hidden; background:#000;
 .kf-entry .blue { color:#4da3ff; font-weight:600; }
 .kf-entry .red { color:#ff5a4d; font-weight:600; }
 .kf-entry .wpn { color:#e8b64c; margin:0 7px; }
-.kf-entry .hs { color:#ffb84d; font-weight:700; margin-left:6px; }
+.kf-entry .wpn:has(+ .hs) { margin-right:0; }
+.kf-entry .hs { color:#ffb84d; font-weight:700; }
+.kf-entry .hs svg { margin:0 5px 0 1px; vertical-align:-2px; width:12px; height:12px; fill:#ffb84d; }
 .kf-entry.out { opacity:0; transition:opacity .5s; }
 @keyframes kfIn { from { transform:translateX(30px); opacity:0; } to { transform:none; opacity:1; } }
 
@@ -185,3 +187,159 @@ html,body { width:100%; height:100%; overflow:hidden; background:#000;
   background:rgba(120,10,10,.92); color:#ffe; font:12px/1.5 Consolas,monospace; padding:8px 14px;
   max-height:38vh; overflow:auto; white-space:pre-wrap; pointer-events:auto; }
 #error-overlay.visible { display:block; }
+
+/* 伤害输出面板 */
+#damage-report {
+  position: absolute;
+  right: 26px;
+  bottom: 190px;
+  min-width: 220px;
+  background: rgba(8, 12, 18, 0.85);
+  border: 1px solid rgba(232, 182, 76, 0.45);
+  padding: 10px 14px;
+  z-index: 6;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(24px);
+  transition: transform 0.25s ease-out, opacity 0.25s ease-out, visibility 0.25s ease-out;
+}
+#damage-report.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+.dr-title {
+  color: #e8b64c;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  border-bottom: 1px solid rgba(232, 182, 76, 0.3);
+  padding-bottom: 5px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+.dr-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+.dr-row:last-child {
+  margin-bottom: 0;
+}
+.dr-name {
+  color: #c6ced6;
+}
+.dr-dmg {
+  color: #ff9a3d;
+  font-weight: 700;
+}
+
+/* 连杀反馈特效 */
+#killstreak {
+  position: absolute;
+  left: 50%;
+  top: 36%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+#ks-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 46px;
+  font-weight: 900;
+  letter-spacing: 8px;
+  text-shadow: 0 0 3px #000, 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 0 20px rgba(255, 217, 126, 0.6);
+}
+#ks-text svg {
+  width: 34px;
+  height: 34px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+#killstreak.ks-hs #ks-text svg {
+  filter: drop-shadow(0 0 4px #000);
+}
+
+.ks-wing {
+  width: 64px;
+  height: 30px;
+  background: linear-gradient(90deg, #ffd97e, #d99b33);
+  clip-path: polygon(100% 65%, 75% 30%, 45% 0%, 55% 35%, 15% 20%, 30% 55%, 0% 50%, 20% 80%, 10% 95%, 60% 80%);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.ks-wing.ks-right {
+  transform: scaleX(-1);
+}
+
+/* 档位配色 */
+#killstreak.ks-1 #ks-text {
+  color: #ffd97e;
+  text-shadow: 0 0 3px #000, 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000, 0 0 20px rgba(255, 217, 126, 0.6);
+}
+#killstreak.ks-1 .ks-wing {
+  filter: brightness(1) drop-shadow(0 0 6px rgba(255, 217, 126, 0.5));
+}
+
+#killstreak.ks-2 #ks-text {
+  color: #ffb84d;
+  text-shadow: 0 0 3px #000, 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000, 0 0 22px rgba(255, 184, 77, 0.7);
+}
+#killstreak.ks-2 .ks-wing {
+  filter: hue-rotate(-12deg) brightness(1.05) drop-shadow(0 0 8px rgba(255, 184, 77, 0.6));
+}
+
+#killstreak.ks-3 #ks-text {
+  color: #ff8c3d;
+  text-shadow: 0 0 3px #000, 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000, 0 0 25px rgba(255, 140, 61, 0.8);
+}
+#killstreak.ks-3 .ks-wing {
+  filter: hue-rotate(-26deg) saturate(1.25) brightness(1.1) drop-shadow(0 0 10px rgba(255, 140, 61, 0.7));
+}
+
+#killstreak.ks-4 #ks-text {
+  color: #ff5a4d;
+  text-shadow: 0 0 3px #000, 0 0 8px #000, 2px 2px 0 #000, -2px -2px 0 #000, 0 0 28px rgba(255, 90, 77, 0.85);
+}
+#killstreak.ks-4 .ks-wing {
+  filter: hue-rotate(-46deg) saturate(1.4) brightness(1.15) drop-shadow(0 0 12px rgba(255, 90, 77, 0.8));
+}
+
+#killstreak.ks-5 #ks-text {
+  color: #e84dff;
+  text-shadow: 0 0 4px #000, 0 0 10px #000, 2px 2px 0 #000, -2px -2px 0 #000, 0 0 36px rgba(232, 77, 255, 0.95), 0 0 16px rgba(232, 77, 255, 0.8);
+}
+#killstreak.ks-5 .ks-wing {
+  filter: hue-rotate(85deg) saturate(1.6) brightness(1.2) drop-shadow(0 0 16px rgba(232, 77, 255, 0.9));
+}
+
+/* 连杀动画 */
+@keyframes ksPop {
+  0% { transform: translateX(-50%) scale(1.7); opacity: 0; }
+  60% { transform: translateX(-50%) scale(0.95); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+#killstreak.show {
+  opacity: 1;
+  animation: ksPop 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+}
+
+#killstreak.fade {
+  opacity: 0;
+  transition: opacity 0.4s ease-out;
+  animation: none;
+}
+
+.diff-row.disabled { opacity: 0.4; }
+.diff-row.disabled label { pointer-events: none; cursor: default; }

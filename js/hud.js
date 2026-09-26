@@ -4,6 +4,8 @@ import { clamp } from './utils.js';
 
 const $ = (id) => document.getElementById(id);
 
+const SKULL_SVG_PATH = 'M12 2C6.48 2 2 6.48 2 12c0 2.85 1.2 5.42 3.12 7.24L6.5 22h11l1.38-2.76C20.8 17.42 22 14.85 22 12c0-5.52-4.48-10-10-10zm-3.5 8a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm7 0a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z';
+
 export class HUD {
   constructor() {
     this.el = {
@@ -22,9 +24,12 @@ export class HUD {
       respawn: $('respawn-overlay'), respawnKiller: $('respawn-killer'), respawnTimer: $('respawn-timer'),
       scoreboard: $('scoreboard'), sbBody: $('sb-body'),
       error: $('error-overlay'),
+      damageReport: $('damage-report'), killstreak: $('killstreak'), ksText: $('ks-text'),
     };
     this._bannerT = null;
     this._hmT = null;
+    this._drT = null;
+    this._ksT = null;
     this._mmStatic = null;
     this.el.fps.style.display = 'none';
   }
@@ -88,10 +93,10 @@ export class HUD {
     this.el.scoreRed.textContent = b;
   }
 
-  setTimer(sec) {
+  setTimer(sec, countdown = true) {
     const m = Math.floor(sec / 60), s = Math.max(0, Math.floor(sec % 60));
     this.el.timer.textContent = `${m}:${String(s).padStart(2, '0')}`;
-    this.el.timer.style.color = sec < 60 ? '#ff5a4d' : '';
+    this.el.timer.style.color = (countdown && sec < 60) ? '#ff5a4d' : '';
   }
 
   setCrosshair(gapPx, visible) {
@@ -132,7 +137,8 @@ export class HUD {
     div.className = 'kf-entry';
     const a = attackerTeam === 'A' ? 'blue' : 'red';
     const v = victimTeam === 'A' ? 'blue' : 'red';
-    div.innerHTML = `<span class="${a}">${attackerName}</span><span class="wpn">[${weaponShort}]</span><span class="${v}">${victimName}</span>${headshot ? '<span class="hs">爆头</span>' : ''}`;
+    const hsIcon = `<span class="hs"><svg viewBox="0 0 24 24" width="12" height="12" style="vertical-align:-2px;" fill="#ffb84d"><path fill-rule="evenodd" d="${SKULL_SVG_PATH}"/></svg></span>`;
+    div.innerHTML = `<span class="${a}">${attackerName}</span><span class="wpn">[${weaponShort}]</span>${headshot ? hsIcon : ''}<span class="${v}">${victimName}</span>`;
     this.el.killfeed.appendChild(div);
     while (this.el.killfeed.children.length > 5) this.el.killfeed.firstChild.remove();
     setTimeout(() => { div.classList.add('out'); setTimeout(() => div.remove(), 600); }, 4600);
@@ -154,6 +160,51 @@ export class HUD {
   setRespawnTimer(t) { this.el.respawnTimer.textContent = Math.ceil(t); }
   hideRespawn() { this.el.respawn.classList.remove('visible'); }
 
+  damageReport(map) {
+    if (!this.el.damageReport) return;
+    const list = map ? Array.from(map.values()).sort((a, b) => (b.dmg || 0) - (a.dmg || 0)).slice(0, 6) : [];
+    let rows = '';
+    if (list.length === 0) {
+      rows = '<div class="dr-row">本回合未对敌人造成伤害</div>';
+    } else {
+      rows = list.map(e => `<div class="dr-row"><span class="dr-name">对 ${e.name}</span><span class="dr-dmg">造成 ${Math.round(e.dmg)} 伤害</span></div>`).join('');
+    }
+    this.el.damageReport.innerHTML = `<div class="dr-title">◆ 伤害输出</div>${rows}`;
+    this.el.damageReport.classList.add('visible');
+    clearTimeout(this._drT);
+    this._drT = setTimeout(() => this.hideDamageReport(), 6500);
+  }
+
+  hideDamageReport() {
+    clearTimeout(this._drT);
+    if (this.el.damageReport) this.el.damageReport.classList.remove('visible');
+  }
+
+  killstreak(n, headshot) {
+    const ks = this.el.killstreak;
+    if (!ks) return;
+    const labels = ['击杀', '双杀', '三连杀', '四连杀', '超神连杀'];
+    const tier = Math.min(Math.max(1, n || 1), 5);
+    const text = labels[tier - 1];
+    ks.className = `ks-${tier}`;
+    if (headshot) {
+      ks.classList.add('ks-hs');
+      const skullSvg = `<svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor"><path fill-rule="evenodd" d="${SKULL_SVG_PATH}"/></svg>`;
+      if (this.el.ksText) this.el.ksText.innerHTML = skullSvg + text;
+    } else {
+      ks.classList.remove('ks-hs');
+      if (this.el.ksText) this.el.ksText.innerHTML = text;
+    }
+    ks.classList.remove('show', 'fade');
+    void this.el.killstreak.offsetWidth;
+    ks.classList.add('show');
+    clearTimeout(this._ksT);
+    this._ksT = setTimeout(() => {
+      ks.classList.remove('show');
+      ks.classList.add('fade');
+    }, 1400);
+  }
+
   setHint(text) {
     this.el.hint.textContent = text;
     this.el.hint.classList.toggle('visible', !!text);
@@ -171,41 +222,56 @@ export class HUD {
       const kd = (s.kills / Math.max(1, s.deaths)).toFixed(2);
       return `<tr class="${s.isPlayer ? 'me' : ''} ${s.alive ? '' : 'dead'}">
         <td style="color:${c}">${s.isPlayer ? '▶ ' : ''}${s.name}</td>
-        <td>${s.kills}</td><td>${s.deaths}</td><td>${kd}</td></tr>`;
+        <td>${s.kills}</td><td>${s.assists}</td><td>${s.deaths}</td><td>${kd}</td></tr>`;
     }).join('');
   }
 
   // ---------- 小地图 ----------
   initMinimap(world) {
+    const S = 176 / 25.2;
+    const mapH = Math.ceil(85.2 * S);
     const c = document.createElement('canvas');
-    c.width = c.height = 176;
+    c.width = 176;
+    c.height = mapH;
     const g = c.getContext('2d');
     g.fillStyle = 'rgba(8,14,20,0.9)';
-    g.fillRect(0, 0, 176, 176);
+    g.fillRect(0, 0, 176, mapH);
     // 甲板
-    const px = (z) => (z + 42.6) * (176 / 85.2);
-    const py = (x) => 88 + x * 3.4;
+    const px = (x) => (x + 12.6) * S;
+    const py = (z) => (z + 42.6) * S;
     g.fillStyle = '#2a3540';
-    g.fillRect(px(-42.6), py(-12.6), 176, 25.2 * 3.4);
+    g.fillRect(0, 0, 176, mapH);
     g.strokeStyle = 'rgba(232,182,76,0.6)';
-    g.strokeRect(px(-42.6), py(-12.6), 176, 25.2 * 3.4);
+    g.strokeRect(0, 0, 176, mapH);
     // 障碍
     for (const m of world.minimap) {
       const shade = m.h > 2.5 ? '#6a7683' : m.h > 1.5 ? '#566270' : '#414c58';
       g.fillStyle = shade;
-      g.fillRect(px(m.z - m.d / 2), py(m.x - m.w / 2), Math.max(m.d * (176 / 85.2), 2), Math.max(m.w * 3.4, 2));
+      g.fillRect(px(m.x - m.w / 2), py(m.z - m.d / 2), Math.max(m.w * S, 2), Math.max(m.d * S, 2));
     }
     this._mmStatic = c;
   }
 
   drawMinimap(soldiers, player, time) {
     const ctx = this.el.minimap.getContext('2d');
-    if (this._mmStatic) ctx.drawImage(this._mmStatic, 0, 0);
-    else ctx.clearRect(0, 0, 176, 176);
-    const px = (z) => (z + 42.6) * (176 / 85.2);
-    const py = (x) => 88 + x * 3.4;
+    const S = 176 / 25.2;
+    const px = (x) => (x + 12.6) * S;
+    const py = (z) => (z + 42.6) * S;
+
+    const camX = clamp(px(player.pos.x) - 88, 0, Math.max(0, 176 - 176));
+    const camY = clamp(py(player.pos.z) - 88, 0, Math.ceil(85.2 * S) - 176);
+
+    if (this._mmStatic) {
+      ctx.drawImage(this._mmStatic, camX, camY, 176, 176, 0, 0, 176, 176);
+    } else {
+      ctx.clearRect(0, 0, 176, 176);
+    }
+
     for (const s of soldiers) {
       if (!s.alive || s.isPlayer) continue;
+      const sx = px(s.pos.x) - camX;
+      const sy = py(s.pos.z) - camY;
+      if (sx < 0 || sx > 176 || sy < 0 || sy > 176) continue;
       if (s.team === player.team) {
         ctx.fillStyle = '#4da3ff';
       } else {
@@ -214,14 +280,14 @@ export class HUD {
         ctx.fillStyle = '#ff5a4d';
       }
       ctx.beginPath();
-      ctx.arc(px(s.pos.z), py(s.pos.x), 3, 0, 7);
+      ctx.arc(sx, sy, 3, 0, 7);
       ctx.fill();
     }
     // 玩家箭头
     if (player.alive) {
-      const x = px(player.pos.z), y = py(player.pos.x);
-      const dx = -Math.cos(player.yaw), dy = -Math.sin(player.yaw);
-      const ang = Math.atan2(dy, dx);
+      const x = px(player.pos.x) - camX;
+      const y = py(player.pos.z) - camY;
+      const ang = Math.atan2(-Math.cos(player.yaw), -Math.sin(player.yaw));
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(ang);

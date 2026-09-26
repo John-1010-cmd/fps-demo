@@ -12,6 +12,8 @@ export const CONFIG = {
     teamSize: 5, scoreLimit: 50, timeLimit: 600,
     respawnDelay: 3, spawnProtect: 2,
   },
+  // 伤害部位倍率（腹部/四肢伤害折减；相对受害者身高划分：腿部 <45% 身高、腹部 45%~68%、胸部 >68%，爆头仍走头部球体判定和 def.headMult）
+  hitZones: { chest: 1.0, abdomen: 0.92, legs: 0.72 },
   grenade: {
     count: 2, fuse: 2.6, radius: 7.5, maxDmg: 112, minDmg: 14,
     throwSpeed: 17.5, gravity: 14, bounce: 0.42, radiusPhys: 0.12,
@@ -98,6 +100,6 @@ export const TEAM = {
 };
 
 export const BOT_NAMES = {
-  A: ['海鹰', '礁石', '浪花', '瞭望', '铁锚', '汽笛'],
-  B: ['豺狼', '毒蝎', '夜枭', '沙暴', '鬼火', '黑帆'],
+  A: ['海鹰', '礁石', '浪花', '瞭望', '铁锚', '汽笛', '灯塔', '怒涛', '深潜', '破浪'],
+  B: ['豺狼', '毒蝎', '夜枭', '沙暴', '鬼火', '黑帆', '毒蛇', '秃鹫', '雪豹', '荒原'],
 };

@@ -40,7 +40,23 @@
       <label><input type="radio" name="difficulty" value="normal" checked> 普通</label>
       <label><input type="radio" name="difficulty" value="hard"> 困难</label>
     </div>
-    <div class="menu-footer">团队死斗 5v5 · 率先取得 50 次击杀获胜 · 建议使用 Chrome / Edge 浏览器</div>
+    <div class="diff-row">
+      <span class="diff-label">对战规模</span>
+      <label><input type="radio" name="teamsize" value="5" checked> 5v5</label>
+      <label><input type="radio" name="teamsize" value="10"> 10v10</label>
+    </div>
+    <div class="diff-row">
+      <span class="diff-label">对战模式</span>
+      <label><input type="radio" name="gamemode" value="score" checked> 击杀赛 · 50 杀</label>
+      <label><input type="radio" name="gamemode" value="time"> 定时赛</label>
+    </div>
+    <div id="timelimit-row" class="diff-row">
+      <span class="diff-label">对局时长</span>
+      <label><input type="radio" name="timelimit" value="600" checked> 10 分钟</label>
+      <label><input type="radio" name="timelimit" value="1200"> 20 分钟</label>
+      <label><input type="radio" name="timelimit" value="1800"> 30 分钟</label>
+    </div>
+    <div class="menu-footer">团队死斗 5v5 / 10v10 · 击杀赛率先 50 杀获胜 / 定时赛限时结束领先获胜 · 建议使用 Chrome / Edge 浏览器</div>
   </div>
 </div>
 
@@ -103,7 +119,7 @@
   <div class="panel panel-wide">
     <div id="end-title" class="panel-title">胜利</div>
     <div id="end-score" class="end-score">40 : 26</div>
-    <table class="sb-table"><thead><tr><th>玩家</th><th>击杀</th><th>死亡</th><th>K/D</th></tr></thead><tbody id="end-body"></tbody></table>
+    <table class="sb-table"><thead><tr><th>玩家</th><th>击杀</th><th>协助</th><th>死亡</th><th>K/D</th></tr></thead><tbody id="end-body"></tbody></table>
     <div class="menu-buttons row">
       <button id="btn-restart" class="btn btn-primary">再来一局</button>
       <button id="btn-end-menu" class="btn">回主菜单</button>
@@ -158,9 +174,12 @@
     <div id="respawn-timer">3</div>
   </div>
 
+  <div id="damage-report"></div>
+  <div id="killstreak"><span class="ks-wing ks-left"></span><span id="ks-text"></span><span class="ks-wing ks-right"></span></div>
+
   <div id="scoreboard">
     <div class="sb-head">计分板 &mdash; 团队死斗</div>
-    <table class="sb-table"><thead><tr><th>玩家</th><th>击杀</th><th>死亡</th><th>K/D</th></tr></thead><tbody id="sb-body"></tbody></table>
+    <table class="sb-table"><thead><tr><th>玩家</th><th>击杀</th><th>协助</th><th>死亡</th><th>K/D</th></tr></thead><tbody id="sb-body"></tbody></table>
   </div>
 </div>
 

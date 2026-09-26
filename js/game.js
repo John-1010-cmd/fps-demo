@@ -18,6 +18,7 @@ export class Game {
     this.cfg = CONFIG;
     this.state = 'menu';
     this.time = 0;
+    this.matchTimeLimit = CONFIG.match.timeLimit;
     this.timeLeft = CONFIG.match.timeLimit;
     this.scores = { A: 0, B: 0 };
     this.playerTeam = 'A';
@@ -31,7 +32,10 @@ export class Game {
     this.autotest = false;
     this.fpsEma = 60;
     this.stats = { shots: 0, hits: 0 };
-    this.settings = { sens: 1, fov: 75, volume: 0.8, quality: 'medium', fps: true, difficulty: 'normal' };
+    this.dmgDealt = new Map();
+    this.scoreCap = CONFIG.match.scoreLimit;
+    this.mode = 'score';
+    this.settings = { sens: 1, fov: 75, volume: 0.8, quality: 'medium', fps: true, difficulty: 'normal', timeLimit: 600, gamemode: 'score', teamSize: 5 };
   }
 
   init() {
@@ -95,13 +99,30 @@ export class Game {
     this.cleanupMatch();
     this.state = 'playing';
     this.time = 0;
-    this.timeLeft = CONFIG.match.timeLimit;
+    this.mode = this.settings.gamemode === 'time' ? 'time' : 'score';
+    let bannerSub = '';
+    if (this.mode === 'time') {
+      this.matchTimeLimit = this.settings.timeLimit;
+      this.scoreCap = Infinity;
+      this.timeLeft = this.matchTimeLimit;
+      bannerSub = `限时 ${this.matchTimeLimit / 60} 分钟 · 时间耗尽时领先获胜`;
+    } else {
+      this.scoreCap = CONFIG.match.scoreLimit;
+      bannerSub = `率先取得 ${this.scoreCap} 次击杀获胜`;
+    }
     this.scores = { A: 0, B: 0 };
     this.totalKills = 0;
     this.firstBlood = false;
+    this.multiKills = 0;
+    this.lastKillAt = -99;
+    this.dmgDealt.clear();
     this.hud.show();
     this.hud.setScores(0, 0);
-    this.hud.setTimer(this.timeLeft);
+    if (this.mode === 'time') {
+      this.hud.setTimer(this.timeLeft, true);
+    } else {
+      this.hud.setTimer(0, false);
+    }
 
     // 玩家
     this.resetSoldier(this.player, this.pickSpawn('A'));
@@ -109,19 +130,20 @@ export class Game {
     this.player.autoPilot = this.autotest;
 
     // 机器人
+    const ts = this.settings.teamSize || 5;
     const namesA = [...BOT_NAMES.A].sort(() => Math.random() - 0.5);
     const namesB = [...BOT_NAMES.B].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < CONFIG.match.teamSize - 1; i++) {
+    for (let i = 0; i < ts - 1; i++) {
       const b = new BotController(this, 'A', `保卫者·${namesA[i % namesA.length]}`, this.settings.difficulty);
       this.resetSoldier(b, this.pickSpawn('A'));
       this.soldiers.push(b);
     }
-    for (let i = 0; i < CONFIG.match.teamSize; i++) {
+    for (let i = 0; i < ts; i++) {
       const b = new BotController(this, 'B', `潜伏者·${namesB[i % namesB.length]}`, this.settings.difficulty);
       this.resetSoldier(b, this.pickSpawn('B'));
       this.soldiers.push(b);
     }
-    this.hud.banner('战斗开始', `率先取得 ${CONFIG.match.scoreLimit} 次击杀`, 2200);
+    this.hud.banner('战斗开始', bannerSub, 2200);
     if (!this.autotest) this.lockPointer();
   }
 
@@ -207,6 +229,7 @@ export class Game {
     if (s.isPlayer) {
       s.keys.clear(); s.fireHeld = false;
       this.hud.hideRespawn();
+      this.hud.hideDamageReport();
     } else {
       s.path = null; s.target = null; s.alertPos = null;
       s.lastSeenAt = -99; s.burstLeft = 0;
@@ -233,7 +256,8 @@ export class Game {
       _bodyBox.max.set(s.pos.x + 0.34, s.pos.y + s.height, s.pos.z + 0.34);
       const tb = rayAABB(origin, dir, _bodyBox, bestT);
       let t = -1, p = null;
-      if (th >= 0 && (tb < 0 || th <= tb + 0.02)) { t = th; p = 'head'; }
+      // 头部球体约2/3嵌入身体盒顶部，平射时射线会先穿盒面，放宽容差防止爆头被误判为身体
+      if (th >= 0 && (tb < 0 || th <= tb + 0.3)) { t = th; p = 'head'; }
       else if (tb >= 0) { t = tb; p = 'body'; }
       if (t >= 0 && t < bestT) { bestT = t; victim = s; part = p; }
     }
@@ -252,11 +276,16 @@ export class Game {
 
     // 伤害
     if (victim) {
+      if (part === 'body') {
+        const relY = (_hitP.y - victim.pos.y) / victim.height;
+        part = relY < 0.45 ? 'legs' : relY < 0.68 ? 'abdomen' : 'chest';
+      }
       let dmg = def.damage;
       if (bestT > def.rangeStart) {
         dmg *= lerp(1, def.minDmgMult, clamp((bestT - def.rangeStart) / (def.rangeEnd - def.rangeStart), 0, 1));
       }
       if (part === 'head') dmg *= def.headMult;
+      else dmg *= CONFIG.hitZones[part];
       this.stats.hits++;
       const died = victim.takeDamage(dmg, shooter, part, _hitP);
       if (shooter.isPlayer) {
@@ -264,7 +293,9 @@ export class Game {
         if (fx) this.audio.hit(part === 'head');
       }
     } else if (wHit && bestT < maxDist) {
+      // 命中场景几何：火花与弹痕
       this.effects.impact(wHit.point, wHit.normal);
+      this.effects.bulletHole(wHit.point, wHit.normal);
     }
 
     if (!fx) return;
@@ -437,6 +468,17 @@ export class Game {
     setTimeout(() => this.audio.reload(1, sp.dist, sp.pan), weapon.def.reloadTime * 500);
   }
 
+  // ---------- 伤害统计 ----------
+  trackDamage(victim, dmg) {
+    if (!victim || dmg <= 0) return;
+    const entry = this.dmgDealt.get(victim);
+    if (entry) {
+      entry.dmg += dmg;
+    } else {
+      this.dmgDealt.set(victim, { name: victim.name, dmg });
+    }
+  }
+
   // ---------- 击杀 ----------
   onKill(attacker, victim, weaponId, headshot) {
     const suicide = !attacker || attacker === victim;
@@ -460,10 +502,12 @@ export class Game {
       if (this.time - this.lastKillAt < 4.5) this.multiKills++;
       else this.multiKills = 1;
       this.lastKillAt = this.time;
+      this.hud.killstreak(this.multiKills, headshot);
+      this.effects.shake(0.12 + Math.min(this.multiKills, 5) * 0.04);
       if (this.multiKills >= 2) {
-        const labels = ['', '', '双杀！', '三连杀！', '四连杀！', '超神连杀！'];
-        this.hud.banner(labels[Math.min(this.multiKills, 5)], `连续击杀 x${this.multiKills}`, 1300);
         this.audio.multikill(this.multiKills);
+      } else if (this.multiKills === 1) {
+        this.audio.killConfirm();
       }
     }
 
@@ -472,12 +516,14 @@ export class Game {
     if (victim.isPlayer) {
       this.multiKills = 0;
       this.hud.showRespawn(suicide ? '你把自己炸飞了' : `被 ${attacker.name} 使用 ${wName} 击杀`);
+      this.hud.damageReport(this.dmgDealt);
+      this.dmgDealt.clear();
       this.hud.setScope(false);
       this.effects.shake(0.5);
     }
 
     this.totalKills++;
-    if (this.scores.A >= CONFIG.match.scoreLimit || this.scores.B >= CONFIG.match.scoreLimit) {
+    if (this.scores.A >= this.scoreCap || this.scores.B >= this.scoreCap) {
       this.endMatch();
     }
   }
@@ -565,7 +611,7 @@ export class Game {
     });
     addEventListener('wheel', (e) => {
       if (this.state !== 'playing') return;
-      const order = ['rifle', 'shotgun', 'sniper', 'pistol', 'melee'];
+      const order = ['rifle', 'melee', 'pistol', 'sniper', 'shotgun'];
       let i = order.indexOf(this.player.currentWeaponId);
       if (i < 0) i = 0;
       i = (i + (e.deltaY > 0 ? 1 : order.length - 1)) % order.length;
@@ -581,7 +627,6 @@ export class Game {
 
     if (this.state === 'playing') {
       this.time += dt;
-      this.timeLeft = Math.max(0, CONFIG.match.timeLimit - this.time);
 
       this.player.update(dt);
       for (const s of this.soldiers) if (!s.isPlayer) s.update(dt);
@@ -645,11 +690,15 @@ export class Game {
       const scoped = p.weapon.def.scoped && p.ads > 0.6;
       this.hud.setScope(scoped);
       this.hud.setCrosshair(spreadPx, !scoped && p.alive);
-      this.hud.setTimer(this.timeLeft);
+      if (this.mode === 'time') {
+        this.timeLeft = Math.max(0, this.matchTimeLimit - this.time);
+        this.hud.setTimer(this.timeLeft, true);
+        if (this.timeLeft <= 0) this.endMatch();
+      } else {
+        this.hud.setTimer(this.time, false);
+      }
       this.hud.setFps(this.fpsEma);
       this.hud.drawMinimap(this.soldiers, p, this.time);
-
-      if (this.timeLeft <= 0) this.endMatch();
     }
 
     this.renderer.render(this.scene, this.camera);

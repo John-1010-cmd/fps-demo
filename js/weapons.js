@@ -158,6 +158,65 @@ const texGunmetal = texCanvas((g, w, h) => {
   for (let y = 0; y < h; y += 32) g.fillRect(0, y, w, 2);
 });
 
+// 拉丝冷钢（刀身/手里剑/刃口金属拉丝与高光）
+const texBrushedSteel = texCanvas((g, w, h) => {
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#c2c9d2');
+  grad.addColorStop(0.5, '#e6edf4');
+  grad.addColorStop(1, '#b4bec8');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 350; i++) {
+    const alpha = rand(0.05, 0.22);
+    g.fillStyle = Math.random() > 0.45 ? `rgba(255,255,255,${alpha})` : `rgba(35,45,55,${alpha})`;
+    g.fillRect(rand(0, w), rand(0, h), rand(25, w), 1);
+  }
+  const hi = g.createLinearGradient(0, 0, w, 0);
+  hi.addColorStop(0, 'rgba(255,255,255,0)');
+  hi.addColorStop(0.48, 'rgba(255,255,255,0.22)');
+  hi.addColorStop(0.52, 'rgba(255,255,255,0.3)');
+  hi.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = hi;
+  g.fillRect(0, 0, w, h);
+});
+
+// 战术防滑握柄（深黑橡胶菱格纹）
+const texGripRubber = texCanvas((g, w, h) => {
+  g.fillStyle = '#1c1e22';
+  g.fillRect(0, 0, w, h);
+  g.lineWidth = 1.6;
+  const step = 16;
+  for (let x = -w; x < w * 2; x += step) {
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x + h, h); g.stroke();
+    g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,0.09)';
+    g.beginPath(); g.moveTo(x + 1, 0); g.lineTo(x + h + 1, h); g.stroke();
+  }
+  for (let i = 0; i < 240; i++) {
+    const v = rand(25, 55);
+    g.fillStyle = `rgba(${v},${v},${v},${rand(0.12, 0.3)})`;
+    g.fillRect(rand(0, w), rand(0, h), 2, 2);
+  }
+});
+
+// 战术黑涂层（斧头/工兵铲黑钢耐磨面）
+const texTacticalCoating = texCanvas((g, w, h) => {
+  g.fillStyle = '#26292e';
+  g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 300; i++) {
+    const v = rand(45, 80);
+    g.fillStyle = `rgba(${v},${v + 2},${v + 4},${rand(0.06, 0.2)})`;
+    g.fillRect(rand(0, w), rand(0, h), rand(3, 16), rand(1, 3));
+  }
+  for (let y = 0; y < h; y += 28) {
+    g.fillStyle = 'rgba(12,14,18,0.35)';
+    g.fillRect(0, y, w, 2);
+    g.fillStyle = 'rgba(255,255,255,0.06)';
+    g.fillRect(0, y + 2, w, 1);
+  }
+});
+
 export function buildViewModel(id) {
   const g = new THREE.Group();
   const metal = new THREE.MeshPhongMaterial({ map: texGunmetal, shininess: 70 });
@@ -166,6 +225,10 @@ export function buildViewModel(id) {
   const steel = new THREE.MeshPhongMaterial({ color: 0xb8bec6, shininess: 120 });
   const olive = new THREE.MeshPhongMaterial({ color: 0x4a5238, shininess: 25 });
   const glove = new THREE.MeshPhongMaterial({ color: 0x3d4038, shininess: 10 });
+  const brushedSteel = new THREE.MeshPhongMaterial({ map: texBrushedSteel, shininess: 140, specular: 0x8fa0b2 });
+  const tacticalSteel = new THREE.MeshPhongMaterial({ map: texTacticalCoating, shininess: 80, specular: 0x47515a });
+  const grip = new THREE.MeshPhongMaterial({ map: texGripRubber, shininess: 28 });
+  const bladeEdge = new THREE.MeshPhongMaterial({ color: 0xdee7f0, shininess: 160, specular: 0xffffff });
   const geo = new THREE.BoxGeometry(1, 1, 1);
   const cyl = new THREE.CylinderGeometry(1, 1, 1, 12);
   const add = (mat, x, y, z, w, h, d, rx = 0) => {
@@ -239,34 +302,76 @@ export function buildViewModel(id) {
       muzzle.position.set(0, 0.02, -0.19);
       break;
     case 'knife':
-      add(dark, 0, -0.02, 0.05, 0.035, 0.05, 0.14);   // 柄
-      add(steel, 0, 0.01, -0.16, 0.012, 0.045, 0.3);  // 刃
-      add(steel, 0, 0.028, -0.3, 0.01, 0.02, 0.06);   // 刀尖
-      add(dark, 0, -0.005, -0.02, 0.045, 0.06, 0.02); // 护手
+      // CF 军用匕首风格：前窄后宽拉丝钢刀身 + 黑色防滑柄 + 独立战术护手片 + 尾部配重盖
+      add(grip, 0, -0.02, 0.055, 0.034, 0.048, 0.13);            // 黑色防滑柄
+      add(dark, 0, -0.02, 0.035, 0.036, 0.05, 0.012);            // 防滑环圈
+      add(tacticalSteel, 0, -0.02, 0.125, 0.038, 0.052, 0.016);  // 柄尾钢配重盖
+      add(tacticalSteel, 0, -0.01, -0.018, 0.048, 0.072, 0.016); // 独立护手片
+      add(dark, 0, -0.032, -0.018, 0.036, 0.024, 0.018);         // 下护手止动卡突
+      add(brushedSteel, 0, 0.006, -0.11, 0.014, 0.048, 0.17);    // 刀身后段(宽)
+      add(brushedSteel, 0, 0.012, -0.23, 0.011, 0.038, 0.11);    // 刀身前段(窄)
+      add(dark, 0, 0.026, -0.13, 0.013, 0.01, 0.21);             // 刀背战术脊骨
+      add(brushedSteel, 0, 0.024, -0.295, 0.009, 0.022, 0.05, 0.15); // 斜切刀尖
+      add(bladeEdge, 0, -0.012, -0.18, 0.007, 0.012, 0.28);      // 银白高光开刃口
       hands(0, -0.02, 0.05, 0, -0.02, 0.05);
       muzzle.position.set(0, 0, -0.3);
       break;
     case 'axe':
-      add(wood, 0, -0.05, -0.02, 0.035, 0.05, 0.5);   // 木柄
-      add(steel, 0, 0.03, -0.26, 0.02, 0.12, 0.09);   // 斧头
-      add(steel, 0, 0.03, -0.3, 0.014, 0.16, 0.04);   // 斧刃
+      // CF 军用手斧风格：深色战术斧刃(楔形厚实) + 银白宽弧刃口 + 木质手柄加防滑套
+      add(wood, 0, -0.05, -0.02, 0.032, 0.048, 0.5);             // 木柄主干
+      add(grip, 0, -0.05, 0.08, 0.036, 0.052, 0.12);             // 后握把防滑胶套
+      add(grip, 0, -0.05, -0.08, 0.036, 0.052, 0.11);            // 前握把防滑胶套
+      add(tacticalSteel, 0, -0.05, 0.235, 0.036, 0.052, 0.018);   // 斧柄尾部钢盖
+      add(tacticalSteel, 0, -0.035, -0.24, 0.04, 0.065, 0.08);    // 斧颈加固钢套
+      add(tacticalSteel, 0, 0.035, -0.25, 0.024, 0.11, 0.09);     // 战术斧身中段(楔形主基座)
+      add(tacticalSteel, 0, 0.052, -0.19, 0.022, 0.055, 0.04);    // 斧背破障重锤角
+      add(tacticalSteel, 0, 0.072, -0.18, 0.016, 0.025, 0.025);   // 斧背破障尖角
+      add(tacticalSteel, 0, 0.035, -0.295, 0.016, 0.14, 0.05);    // 楔形前倾斧板
+      add(bladeEdge, 0, 0.035, -0.325, 0.008, 0.175, 0.028);      // 银白月牙主刃缘
+      add(bladeEdge, 0, 0.105, -0.315, 0.007, 0.04, 0.02);       // 斧刃上飞角
+      add(bladeEdge, 0, -0.035, -0.315, 0.007, 0.04, 0.02);      // 斧刃下挑角
+      add(dark, 0, 0.035, -0.26, 0.026, 0.045, 0.03);            // 斧侧战术减重凹槽
       hands(0, -0.06, 0.08, 0, -0.05, -0.08);
       muzzle.position.set(0, 0, -0.3);
       break;
     case 'shovel':
-      add(wood, 0, -0.04, 0, 0.032, 0.045, 0.46);
-      add(steel, 0, -0.01, -0.28, 0.1, 0.02, 0.14);   // 铲头
-      add(steel, 0, -0.01, -0.36, 0.06, 0.018, 0.05);
+      // CF 军用铁铲风格：木柄 + 尾端D形握把 + 战术钢制宽扁铲头(顶部踏肩与中脊) + 侧前刃口
+      add(wood, 0, -0.04, 0.02, 0.03, 0.036, 0.42);              // 木柄主干
+      add(tacticalSteel, -0.028, -0.04, 0.25, 0.012, 0.03, 0.06); // D把左侧支臂
+      add(tacticalSteel, 0.028, -0.04, 0.25, 0.012, 0.03, 0.06);  // D把右侧支臂
+      add(wood, 0, -0.04, 0.275, 0.066, 0.026, 0.022);           // D形横握木
+      add(tacticalSteel, 0, -0.04, 0.288, 0.072, 0.03, 0.01);     // D把尾部护钢
+      add(tacticalSteel, 0, -0.032, -0.195, 0.036, 0.042, 0.07);  // 铲颈加固钢套
+      add(dark, 0, -0.032, -0.22, 0.04, 0.046, 0.015);           // 铲颈紧固箍环
+      add(tacticalSteel, 0, 0.002, -0.25, 0.136, 0.02, 0.025);    // 顶部双侧冲压踏肩
+      add(tacticalSteel, 0, -0.01, -0.305, 0.128, 0.012, 0.11);   // 宽扁主铲板
+      add(brushedSteel, 0, 0.001, -0.305, 0.024, 0.016, 0.10);   // 铲面中脊冲压加强棱
+      add(tacticalSteel, 0, -0.01, -0.375, 0.098, 0.011, 0.06);   // 铲板梯形前段
+      add(bladeEdge, 0, -0.01, -0.41, 0.086, 0.007, 0.016);      // 铲头前端利刃
+      add(bladeEdge, -0.062, -0.01, -0.315, 0.006, 0.008, 0.09); // 左侧劈砍刃
+      add(bladeEdge, 0.062, -0.01, -0.315, 0.006, 0.008, 0.09);  // 右侧劈砍刃
       hands(0, -0.05, 0.1, 0, -0.04, -0.05);
       muzzle.position.set(0, 0, -0.35);
       break;
     case 'shuriken': {
+      // 八芒星飞镖视模：主十字刃 + 45°斜向刃组 + 中心圆柱轮毂 + 拉丝钢材质
       const star = new THREE.Group();
-      const m1 = new THREE.Mesh(geo, dark); m1.scale.set(0.16, 0.008, 0.03);
-      const m2 = new THREE.Mesh(geo, dark); m2.scale.set(0.03, 0.008, 0.16);
-      const m3 = new THREE.Mesh(geo, steel); m3.scale.set(0.1, 0.006, 0.02); m3.rotation.y = Math.PI / 4;
-      const m4 = new THREE.Mesh(geo, steel); m4.scale.set(0.02, 0.006, 0.1); m4.rotation.y = Math.PI / 4;
-      star.add(m1, m2, m3, m4);
+      // 正十字主刃组（拉丝钢）
+      const b1 = new THREE.Mesh(geo, brushedSteel); b1.scale.set(0.165, 0.007, 0.032);
+      const b2 = new THREE.Mesh(geo, brushedSteel); b2.scale.set(0.032, 0.007, 0.165);
+      // 正十字开刃锋尖
+      const e1 = new THREE.Mesh(geo, bladeEdge); e1.scale.set(0.176, 0.005, 0.016);
+      const e2 = new THREE.Mesh(geo, bladeEdge); e2.scale.set(0.016, 0.005, 0.176);
+      // 45° 斜向第二组刃（形成八芒星视感）
+      const d1 = new THREE.Mesh(geo, brushedSteel); d1.scale.set(0.155, 0.007, 0.03); d1.rotation.y = Math.PI / 4;
+      const d2 = new THREE.Mesh(geo, brushedSteel); d2.scale.set(0.03, 0.007, 0.155); d2.rotation.y = Math.PI / 4;
+      // 45° 斜向开刃锋尖
+      const de1 = new THREE.Mesh(geo, bladeEdge); de1.scale.set(0.164, 0.005, 0.014); de1.rotation.y = Math.PI / 4;
+      const de2 = new THREE.Mesh(geo, bladeEdge); de2.scale.set(0.014, 0.005, 0.164); de2.rotation.y = Math.PI / 4;
+      // 中心圆形轮毂（圆柱体）
+      const hubOuter = new THREE.Mesh(cyl, tacticalSteel); hubOuter.scale.set(0.028, 0.012, 0.028);
+      const hubInner = new THREE.Mesh(cyl, dark); hubInner.scale.set(0.014, 0.014, 0.014);
+      star.add(b1, b2, e1, e2, d1, d2, de1, de2, hubOuter, hubInner);
       star.position.set(0, 0, -0.15);
       g.add(star);
       g.userData.spin = star;
@@ -349,11 +454,16 @@ export class Shuriken {
     this.def = def;
     this.stuck = 0;
     const geo = new THREE.BoxGeometry(1, 1, 1);
-    const mat = new THREE.MeshPhongMaterial({ color: 0x2a2d33, shininess: 80 });
+    const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 10);
+    const mat = new THREE.MeshPhongMaterial({ map: texBrushedSteel, shininess: 120 });
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x23262b, shininess: 40 });
     this.mesh = new THREE.Group();
     const a = new THREE.Mesh(geo, mat); a.scale.set(0.17, 0.008, 0.035);
     const b = new THREE.Mesh(geo, mat); b.scale.set(0.035, 0.008, 0.17);
-    this.mesh.add(a, b);
+    const c = new THREE.Mesh(geo, mat); c.scale.set(0.155, 0.007, 0.03); c.rotation.y = Math.PI / 4;
+    const d = new THREE.Mesh(geo, mat); d.scale.set(0.03, 0.007, 0.155); d.rotation.y = Math.PI / 4;
+    const hub = new THREE.Mesh(cylGeo, darkMat); hub.scale.set(0.026, 0.012, 0.026);
+    this.mesh.add(a, b, c, d, hub);
     this.mesh.position.copy(pos);
     game.scene.add(this.mesh);
     this.spin = 0;

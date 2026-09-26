@@ -15,7 +15,23 @@ function dotTexture(soft = true) {
   return t;
 }
 
+function bulletHoleTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(15,15,15,1)');
+  grad.addColorStop(0.35, 'rgba(25,25,25,0.95)');
+  grad.addColorStop(0.65, 'rgba(60,50,45,0.6)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  return t;
+}
+
 const MAXP = 900;
+const HOLE_LIFE = 5;
+const _vHoleLook = new THREE.Vector3();
 
 class ParticlePool {
   constructor(scene, texture, blending) {
@@ -121,6 +137,24 @@ export class Effects {
     // 烟幕云团
     this.smokeTex = dotTexture(true);
     this.clouds = [];
+
+    // 弹痕贴花池
+    this.holes = [];
+    const holeTex = bulletHoleTexture();
+    const hGeo = new THREE.PlaneGeometry(1, 1);
+    for (let i = 0; i < 56; i++) {
+      const m = new THREE.Mesh(hGeo, new THREE.MeshBasicMaterial({
+        map: holeTex,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        opacity: 0,
+      }));
+      m.visible = false;
+      scene.add(m);
+      this.holes.push({ mesh: m, life: 0 });
+    }
   }
 
   smokeCloud(pos, dur = 13) {
@@ -180,6 +214,21 @@ export class Effects {
         normal.x * rand(0.2, 0.8), rand(0.4, 1), normal.z * rand(0.2, 0.8),
         rand(0.4, 0.8), 0.28, 0.27, 0.25, -0.5);
     }
+  }
+
+  bulletHole(point, normal) {
+    let best = this.holes[0];
+    for (const h of this.holes) if (h.life < best.life) best = h;
+    const m = best.mesh;
+    m.position.copy(point).addScaledVector(normal, 0.012);
+    _vHoleLook.copy(point).add(normal);
+    m.lookAt(_vHoleLook);
+    m.rotateZ(rand(0, 6.28));
+    const s = rand(0.12, 0.2);
+    m.scale.set(s, s, 1);
+    m.material.opacity = 0.85;
+    m.visible = true;
+    best.life = HOLE_LIFE;
   }
 
   blood(point) {
@@ -254,6 +303,13 @@ export class Effects {
         b.mesh.scale.setScalar(0.5 + f * 5.5);
         b.mesh.material.opacity = Math.max(0, 0.9 - f * 1.1);
         if (b.life <= 0) b.mesh.visible = false;
+      }
+    }
+    for (const h of this.holes) {
+      if (h.life > 0) {
+        h.life -= dt;
+        h.mesh.material.opacity = 0.85 * clamp(h.life / 1.2, 0, 1);
+        if (h.life <= 0) h.mesh.visible = false;
       }
     }
     this.trauma = Math.max(0, this.trauma - dt * 1.6);

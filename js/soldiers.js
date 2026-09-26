@@ -89,7 +89,8 @@ export class Soldier {
     this.throwableSel = 'frag';
     this.blindUntil = 0;
     this.grenades = CONFIG.grenade.count;
-    this.kills = 0; this.deaths = 0;
+    this.kills = 0; this.deaths = 0; this.assists = 0;
+    this.damagedBy = new Map();
     this.lastDamageAt = -99;
     this.lastShotAt = -99;
     this.spawnProtectUntil = 0;
@@ -158,7 +159,14 @@ export class Soldier {
 
   takeDamage(dmg, attacker, part, hitPoint, weaponId) {
     if (!this.alive || this.game.time < this.spawnProtectUntil) return false;
+    const prevHp = this.hp;
     this.hp -= dmg;
+    if (attacker && attacker.isPlayer && attacker !== this && attacker.team !== this.team) {
+      this.game.trackDamage(this, Math.min(dmg, prevHp));
+    }
+    if (attacker && attacker !== this && attacker.team !== this.team) {
+      this.damagedBy.set(attacker, this.game.time);
+    }
     this.lastDamageAt = this.game.time;
     if (hitPoint) this.game.effects.blood(hitPoint);
     if (this.isPlayer) this.game.onPlayerHurt(attacker, dmg);
@@ -180,6 +188,12 @@ export class Soldier {
     if (!weaponId && attacker) {
       weaponId = attacker.currentWeaponId === 'melee' ? attacker.meleeWeapon.variant : attacker.currentWeaponId;
     }
+    for (const [source, t] of this.damagedBy) {
+      if (source !== attacker && source !== this && this.game.time - t <= 8) {
+        source.assists++;
+      }
+    }
+    this.damagedBy.clear();
     this.game.onKill(attacker, this, weaponId || 'rifle', headshot);
   }
 
@@ -265,6 +279,7 @@ export class PlayerController extends Soldier {
     this.stepAcc = 0;
     this.autoPilot = false;   // autotest 用
     this.nadeKeyCd = 0;
+    this.deathFromY = null;
   }
 
   attachCamera(camera) {
@@ -309,6 +324,7 @@ export class PlayerController extends Soldier {
   }
 
   update(dt) {
+    if (this.alive && this.deadTimer > 0) { this.deadTimer = 0; this.deathFromY = null; }
     this.updateCommon(dt);
     this.nadeKeyCd = Math.max(0, this.nadeKeyCd - dt);
     // 后坐上跳自动回复
@@ -317,7 +333,7 @@ export class PlayerController extends Soldier {
       this.pitch = clamp(this.pitch - rec, -1.45, 1.45);
       this.climbP -= rec;
     }
-    if (!this.alive) return;
+    if (!this.alive) { this.updateDeathCam(dt); return; }
 
     if (this.autoPilot) this._autoInput(dt);
 
@@ -396,6 +412,23 @@ export class PlayerController extends Soldier {
     } else this.stepAcc = 0;
 
     this.updateCamera(dt, sprinting);
+  }
+
+  updateDeathCam(dt) {
+    if (!this.camera) return;
+    this.deadTimer += dt;
+    const f = Math.min(this.deadTimer / 0.9, 1);
+    const e = 1 - (1 - f) * (1 - f);
+    if (this.deathFromY == null) {
+      this.deathFromY = this.camera.position.y;
+    }
+    for (const id in this.viewModels) this.viewModels[id].group.visible = false;
+    const cam = this.camera;
+    cam.position.set(this.pos.x, this.deathFromY + (this.pos.y + 0.32 - this.deathFromY) * e, this.pos.z);
+    cam.rotation.order = 'YXZ';
+    cam.rotation.y = this.yaw;
+    cam.rotation.x = this.pitch + (0.25 - this.pitch) * e;
+    cam.rotation.z = 0;
   }
 
   updateCamera(dt, sprinting) {
