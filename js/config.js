@@ -70,6 +70,8 @@ export const WEAPONS = {
 // 数字键槽位（枪械）
 export const GUN_ORDER = ['rifle', 'shotgun', 'sniper', 'pistol'];
 export const WEAPON_ORDER = GUN_ORDER;
+// 循环切枪顺序（Q / E / 滚轮）：槽位 1→2→3→4→近战
+export const CYCLE_ORDER = [...GUN_ORDER, 'melee'];
 
 // 近战武器（手里剑为投掷型近战）
 export const MELEE = {

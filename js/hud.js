@@ -25,6 +25,7 @@ export class HUD {
       scoreboard: $('scoreboard'), sbBody: $('sb-body'),
       error: $('error-overlay'),
       damageReport: $('damage-report'), killstreak: $('killstreak'), ksText: $('ks-text'),
+      killCounter: $('kill-counter'), killNum: $('kill-num'),
     };
     this._bannerT = null;
     this._hmT = null;
@@ -32,6 +33,7 @@ export class HUD {
     this._ksT = null;
     this._mmStatic = null;
     this.el.fps.style.display = 'none';
+    this._kc = 0;
   }
 
   show() { this.el.hud.classList.remove('hidden'); }
@@ -91,6 +93,17 @@ export class HUD {
   setScores(a, b) {
     this.el.scoreBlue.textContent = a;
     this.el.scoreRed.textContent = b;
+  }
+
+  setKillCount(n) {   // 底部中央个人击杀累计，增加时跳动
+    if (n === this._kc) return;
+    const up = n > this._kc;
+    this._kc = n;
+    this.el.killNum.textContent = n;
+    if (up) {
+      const kc = this.el.killCounter;
+      kc.classList.remove('pop'); void kc.offsetWidth; kc.classList.add('pop');
+    }
   }
 
   setTimer(sec, countdown = true) {

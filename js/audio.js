@@ -208,6 +208,59 @@ export class AudioEngine {
     setTimeout(() => this.ctx && this._tone(2600, 0.09, { gain: 0.16 }).connect(this.sfx), 40);
   }
 
+  _killOut(spatial) {
+    if (!spatial) return this.sfx;
+    const out = this._out(spatial.dist, spatial.pan, 4, 28);
+    if (!out) return null;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.5;
+    g.connect(out);
+    return g;
+  }
+
+  _killTone(out, freq, delay, dur, gain, type = 'sine', endFreq = freq) {
+    const start = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, start);
+    if (endFreq !== freq) o.frequency.exponentialRampToValueAtTime(endFreq, start + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.001, start);
+    g.gain.linearRampToValueAtTime(gain, start + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    o.connect(g); g.connect(out);
+    o.start(start); o.stop(start + dur + 0.02);
+  }
+
+  headshotKill(spatial) {
+    if (!this.ctx) return;
+    const out = this._killOut(spatial); if (!out) return;
+    this._noise(0.04, { f0: 7800, f1: 4200, type: 'highpass', gain: 0.28 }).connect(out);
+    this._killTone(out, 3100, 0.06, 0.12, 0.24);
+    this._killTone(out, 4100, 0.15, 0.14, 0.28);
+    this._killTone(out, 5200, 0.25, 0.22, 0.32);
+  }
+
+  fragKill(spatial) {
+    if (!this.ctx) return;
+    const lastAt = spatial ? this.lastRemoteFragKillAt : this.lastLocalFragKillAt;
+    if (lastAt !== undefined && this.ctx.currentTime - lastAt < 0.15) return;
+    const out = this._killOut(spatial); if (!out) return;
+    if (spatial) this.lastRemoteFragKillAt = this.ctx.currentTime;
+    else this.lastLocalFragKillAt = this.ctx.currentTime;
+    this._killTone(out, 740, 0.30, 0.22, 0.36, 'triangle', 500);
+    this._killTone(out, 530, 0.55, 0.29, 0.42, 'triangle', 290);
+    this._killTone(out, 1060, 0.55, 0.18, 0.14, 'sine', 600);
+  }
+
+  meleeKill(spatial) {
+    if (!this.ctx) return;
+    const out = this._killOut(spatial); if (!out) return;
+    this._killTone(out, 1430, 0.12, 0.30, 0.32, 'triangle', 650);
+    this._killTone(out, 2030, 0.12, 0.23, 0.19, 'sine', 1050);
+    this._killTone(out, 360, 0.31, 0.14, 0.12, 'square', 240);
+  }
+
   win(win) {
     if (!this.ctx) return;
     const notes = win ? [523, 659, 784, 1046] : [392, 330, 262, 196];

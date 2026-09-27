@@ -245,8 +245,8 @@ export function buildViewModel(id) {
   };
   // 双手（手套）
   const hands = (hx1, hy1, hz1, hx2, hy2, hz2) => {
-    add(glove, hx1, hy1, hz1, 0.075, 0.07, 0.1);
-    add(glove, hx2, hy2, hz2, 0.075, 0.07, 0.1);
+    add(glove, hx1, hy1, hz1, 0.075, 0.07, 0.1).userData.viewHand = true;
+    add(glove, hx2, hy2, hz2, 0.075, 0.07, 0.1).userData.viewHand = true;
   };
   const muzzle = new THREE.Object3D();
 
@@ -385,6 +385,88 @@ export function buildViewModel(id) {
   return { group: g, muzzle };
 }
 
+export class DroppedWeapon {
+  constructor(scene, colliders, source, origin, yaw, bodyVelocity) {
+    this.scene = scene;
+    this.colliders = colliders;
+    this.age = 0;
+    this.restY = null;
+    this.velocity = new THREE.Vector3(
+      -Math.sin(yaw) * 1.8 + bodyVelocity.x * 0.2,
+      2.9 + Math.max(0, bodyVelocity.y * 0.25),
+      -Math.cos(yaw) * 1.8 + bodyVelocity.z * 0.2
+    );
+    this.spin = new THREE.Vector3(3.4, 2.6, 5.2);
+    this.mesh = new THREE.Group();
+    const model = new THREE.Group();
+    model.scale.copy(source.scale);
+    for (const part of source.children) model.add(part.clone(true));
+    const hands = [];
+    model.traverse((part) => {
+      if (part.userData.viewHand) hands.push(part);
+      else if (part.isMesh) {
+        part.renderOrder = 0;
+        part.frustumCulled = true;
+        part.castShadow = true;
+      }
+    });
+    for (const hand of hands) hand.parent.remove(hand);
+    model.position.sub(new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3()));
+    this.mesh.add(model);
+    this.mesh.position.copy(origin);
+    this.mesh.rotation.order = 'YXZ';
+    this.mesh.rotation.y = yaw;
+    scene.add(this.mesh);
+  }
+
+  update(dt) {
+    this.age += dt;
+    if (this.age >= 6) return false;
+    if (this.restY !== null) {
+      this.mesh.rotation.x = this.mesh.rotation.x + (0 - this.mesh.rotation.x) * Math.min(dt * 10, 1);
+      this.mesh.rotation.z = this.mesh.rotation.z + (Math.PI / 2 - this.mesh.rotation.z) * Math.min(dt * 10, 1);
+      return true;
+    }
+
+    const bottom = this.mesh.position.y - 0.11;
+    this.velocity.y -= CONFIG.player.gravity * dt;
+    this.mesh.position.addScaledVector(this.velocity, dt);
+    this.mesh.rotation.x += this.spin.x * dt;
+    this.mesh.rotation.y += this.spin.y * dt;
+    this.mesh.rotation.z += this.spin.z * dt;
+
+    if (this.velocity.y < 0) {
+      let support = -Infinity;
+      const p = this.mesh.position;
+      for (const c of this.colliders) {
+        if (c.max.y > bottom + 0.015 || c.max.y < p.y - 0.11) continue;
+        if (p.x < c.min.x - 0.06 || p.x > c.max.x + 0.06 ||
+            p.z < c.min.z - 0.06 || p.z > c.max.z + 0.06) continue;
+        support = Math.max(support, c.max.y);
+      }
+      if (support !== -Infinity) {
+        p.y = support + 0.11;
+        this.velocity.x *= 0.4;
+        this.velocity.z *= 0.4;
+        if (this.velocity.y < -1) {
+          this.velocity.y *= -0.22;
+          this.spin.multiplyScalar(0.35);
+        } else {
+          this.velocity.set(0, 0, 0);
+          this.spin.set(0, 0, 0);
+          this.restY = support;
+        }
+      }
+    }
+    return this.mesh.position.y > -8;
+  }
+
+  dispose() {
+    this.scene.remove(this.mesh);
+    this.mesh.clear();
+  }
+}
+
 // ---------- 投掷物（手雷/烟雾弹/闪光弹） ----------
 export class Throwable {
   constructor(pos, vel, thrower, game, type = 'frag') {
@@ -434,7 +516,7 @@ export class Throwable {
         }
       }
     }
-    if (this.pos.y < -2.5) return false; // 落水
+    if (this.pos.y < -3.9) return false; // 落水（水面 -4.2，地道内可用）
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.x += dt * 6; this.mesh.rotation.z += dt * 4;
     return true;
@@ -499,7 +581,7 @@ export class Shuriken {
       return true;
     }
     this.pos.addScaledVector(this.vel, dt);
-    if (this.pos.y < -2.5) return false;
+    if (this.pos.y < -3.9) return false; // 落水（水面 -4.2，地道内可用）
     this.spin += dt * 22;
     this.mesh.rotation.y = this.spin;
     this.mesh.position.copy(this.pos);

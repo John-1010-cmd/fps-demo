@@ -7,46 +7,14 @@ import { Weapon, MeleeWeapon, buildViewModel } from './weapons.js';
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 
 // ---------- 人形模型 ----------
+// 双方阵营使用差异化模型（设计稿：assets/concepts/ 保卫者=SWAT 制式装具 / 潜伏者=沙漠民兵）
+// builder 已拆到 js/soldier_models/（共享工具 common.js），返回接口 { group, legL, legR, arms, head, weapon, gunTip }
+import { buildSwatMesh } from './soldier_models/swat.js';
+import { buildMilitiaMesh } from './soldier_models/militia.js';
+
 function buildSoldierMesh(teamKey) {
   const T = TEAM[teamKey];
-  const cloth = new THREE.MeshPhongMaterial({ color: T.cloth, shininess: 8 });
-  const clothD = new THREE.MeshPhongMaterial({ color: new THREE.Color(T.cloth).multiplyScalar(0.6), shininess: 6 });
-  const skin = new THREE.MeshPhongMaterial({ color: T.skin, shininess: 15 });
-  const dark = new THREE.MeshPhongMaterial({ color: 0x22252a, shininess: 20 });
-  const geo = new THREE.BoxGeometry(1, 1, 1);
-  const g = new THREE.Group();
-  const add = (parent, mat, x, y, z, w, h, d) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z); m.scale.set(w, h, d);
-    m.castShadow = true;
-    parent.add(m); return m;
-  };
-  // 腿（原点在髋部，便于摆动）
-  const legL = new THREE.Group(), legR = new THREE.Group();
-  legL.position.set(-0.12, 0.82, 0); legR.position.set(0.12, 0.82, 0);
-  add(legL, clothD, 0, -0.41, 0, 0.17, 0.82, 0.19);
-  add(legR, clothD, 0, -0.41, 0, 0.17, 0.82, 0.19);
-  g.add(legL, legR);
-  // 躯干
-  const torso = new THREE.Group(); torso.position.y = 0.82;
-  add(torso, cloth, 0, 0.29, 0, 0.44, 0.58, 0.26);
-  add(torso, dark, 0, 0.3, -0.02, 0.4, 0.4, 0.3);      // 战术背心
-  // 手臂 + 枪（随俯仰转动）
-  const arms = new THREE.Group(); arms.position.set(0, 1.32, 0);
-  add(arms, cloth, -0.28, -0.12, -0.18, 0.13, 0.13, 0.42);
-  add(arms, cloth, 0.28, -0.12, -0.18, 0.13, 0.13, 0.42);
-  add(arms, dark, 0, -0.1, -0.55, 0.07, 0.14, 0.75);   // 步枪
-  add(arms, dark, 0, 0.0, -0.75, 0.03, 0.06, 0.3);
-  const gunTip = new THREE.Object3D();
-  gunTip.position.set(0, -0.08, -0.95);
-  arms.add(gunTip);
-  // 头 + 头盔（随俯仰微转；坐标相对于 torso 组，其原点在 y=0.82）
-  const head = new THREE.Group(); head.position.set(0, 0.58, 0);
-  add(head, skin, 0, 0.1, 0, 0.24, 0.24, 0.24);
-  add(head, clothD, 0, 0.2, 0, 0.3, 0.14, 0.3);
-  torso.add(head);
-  g.add(torso, arms);
-  return { group: g, legL, legR, arms, head, gunTip };
+  return teamKey === 'A' ? buildSwatMesh(T) : buildMilitiaMesh(T);
 }
 
 function makeNameTag(name, cssColor) {
@@ -194,6 +162,11 @@ export class Soldier {
       }
     }
     this.damagedBy.clear();
+    this.game.dropWeapon(this);
+    if (this.mesh) this.mesh.weapon.visible = false;
+    if (this.isPlayer) {
+      for (const id in this.viewModels) this.viewModels[id].group.visible = false;
+    }
     this.game.onKill(attacker, this, weaponId || 'rifle', headshot);
   }
 
@@ -223,6 +196,10 @@ export class Soldier {
       this.deadTimer += dt;
       const f = Math.min(this.deadTimer / 0.28, 1);
       m.rotation.x = -Math.PI / 2 * f;
+      this.mesh.arms.rotation.x = damp(this.mesh.arms.rotation.x, -0.65, 9, dt);
+      this.mesh.arms.rotation.z = damp(this.mesh.arms.rotation.z, 0.28, 9, dt);
+      this.mesh.legL.rotation.x = damp(this.mesh.legL.rotation.x, 0, 8, dt);
+      this.mesh.legR.rotation.x = damp(this.mesh.legR.rotation.x, 0, 8, dt);
       m.position.y = this.pos.y + 0.15 * f;
       if (this.deadTimer > 2.6) m.position.y -= (this.deadTimer - 2.6) * 0.45;
       m.visible = this.deadTimer < 4.2;

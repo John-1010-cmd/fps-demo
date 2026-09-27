@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>潜伏者 · 沙漠民兵</title>
+<style>
+  :root {
+    --bg-dark: #121418;
+    --panel-bg: rgba(22, 25, 32, 0.85);
+    --panel-border: rgba(255, 255, 255, 0.1);
+    --accent: #ff5a4d;
+    --accent-glow: rgba(255, 90, 77, 0.35);
+    --text-main: #f0f2f5;
+    --text-muted: #9aa0a6;
+    --btn-bg: rgba(35, 40, 50, 0.8);
+    --btn-border: rgba(255, 255, 255, 0.12);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg-dark);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+    color: var(--text-main);
+    user-select: none; -webkit-user-select: none;
+  }
+
+  #canvas-container {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 1;
+  }
+  #gl { width: 100%; height: 100%; display: block; }
+
+  /* 顶部标题栏 */
+  #header {
+    position: absolute; top: 16px; left: 20px; z-index: 10;
+    display: flex; align-items: center; gap: 14px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 10px 18px; border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+  }
+  .team-badge {
+    background: linear-gradient(135deg, #ff5a4d, #c92a2a);
+    color: #fff; font-size: 11px; font-weight: 800;
+    padding: 3px 8px; border-radius: 6px; letter-spacing: 1px;
+    box-shadow: 0 2px 8px var(--accent-glow);
+  }
+  .title-wrap h1 {
+    font-size: 17px; font-weight: 700; letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .title-wrap .sub {
+    font-size: 11.5px; color: var(--text-muted); font-family: monospace;
+    margin-top: 1px;
+  }
+
+  /* 右侧信息侧栏 */
+  #info-sidebar {
+    position: absolute; top: 16px; right: 20px; z-index: 10;
+    width: 320px; max-height: calc(100vh - 120px);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    display: flex; flex-direction: column;
+    transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1), opacity 0.28s ease;
+    overflow: hidden;
+  }
+  #info-sidebar.collapsed {
+    transform: translateX(calc(100% + 30px));
+    opacity: 0; pointer-events: none;
+  }
+  .sidebar-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .sidebar-header h2 { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
+  .close-btn {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 16px; cursor: pointer; padding: 4px; border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .close-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+  .sidebar-content {
+    padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+  }
+  .ref-card {
+    border-radius: 10px; overflow: hidden;
+    background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.06);
+    position: relative;
+  }
+  .ref-card img {
+    width: 100%; height: 180px; object-fit: contain; display: block;
+    background: #1a1c22;
+  }
+  .ref-tag {
+    position: absolute; bottom: 8px; left: 8px;
+    font-size: 11px; background: rgba(0,0,0,0.65); color: #ddd;
+    padding: 2px 8px; border-radius: 4px; backdrop-filter: blur(4px);
+  }
+
+  .meta-list { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+  .meta-item { display: flex; justify-content: space-between; align-items: center; }
+  .meta-label { color: var(--text-muted); }
+  .meta-val { font-weight: 600; color: #e2e8f0; font-family: monospace; }
+  .meta-features { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .feature-pill {
+    font-size: 11px; background: rgba(255,255,255,0.07);
+    padding: 2px 7px; border-radius: 4px; color: #ccd3dd;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .guide-box {
+    background: rgba(255, 90, 77, 0.08);
+    border: 1px solid rgba(255, 90, 77, 0.2);
+    border-radius: 8px; padding: 10px 12px;
+    font-size: 12px; color: #ffb4ae; line-height: 1.5;
+  }
+  .guide-box b { color: #fff; }
+
+  /* 悬浮展示/隐藏侧栏的切换按钮 */
+  #toggle-sidebar-btn {
+    position: absolute; top: 16px; right: 20px; z-index: 9;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    color: var(--text-main); font-size: 13px; font-weight: 600;
+    padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    display: flex; align-items: center; gap: 6px;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  }
+  #toggle-sidebar-btn:hover {
+    background: rgba(45, 50, 62, 0.9);
+    border-color: rgba(255,255,255,0.2);
+  }
+
+  /* 底部悬浮控制台 */
+  #control-dock {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; align-items: center; gap: 10px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    padding: 8px 12px; border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  }
+
+  .btn-group {
+    display: flex; align-items: center; gap: 5px;
+    background: rgba(0,0,0,0.25); padding: 3px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+  .divider { width: 1px; height: 22px; background: rgba(255,255,255,0.12); margin: 0 3px; }
+
+  .ctrl-btn {
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    color: #cbd5e1;
+    font-size: 12.5px; font-weight: 600;
+    padding: 8px 14px; border-radius: 8px;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .ctrl-btn:hover {
+    background: rgba(50, 56, 70, 0.9);
+    color: #fff;
+    border-color: rgba(255,255,255,0.22);
+    transform: translateY(-1px);
+  }
+  .ctrl-btn:active { transform: translateY(0); }
+  .ctrl-btn.active {
+    background: linear-gradient(135deg, #ff5a4d, #e03131);
+    color: #fff;
+    border-color: #ff8787;
+    box-shadow: 0 2px 12px var(--accent-glow);
+  }
+
+  .indicator {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #64748b; transition: background 0.15s;
+  }
+  .ctrl-btn.active .indicator {
+    background: #fff; box-shadow: 0 0 6px #fff;
+  }
+
+  /* 视口交互小提示 */
+  #viewport-hint {
+    position: absolute; bottom: 26px; left: 24px; z-index: 5;
+    font-size: 11.5px; color: rgba(255,255,255,0.4);
+    pointer-events: none; line-height: 1.6;
+    letter-spacing: 0.3px;
+  }
+
+  /* 错误捕获框 */
+  #err {
+    position: fixed; left: 16px; bottom: 70px;
+    color: #ff6b6b; font: 12px/1.4 Consolas, Monaco, monospace;
+    white-space: pre-wrap; z-index: 999;
+    background: rgba(20, 0, 0, 0.85); padding: 8px 12px;
+    border: 1px solid #c92a2a; border-radius: 6px;
+    display: none; max-width: 480px;
+  }
+  #err:not(:empty) { display: block; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./js/vendor/three.module.js" } }
+</script>
+</head>
+<body>
+
+<div id="canvas-container">
+  <canvas id="gl"></canvas>
+</div>
+
+<!-- 顶部标题 -->
+<header id="header">
+  <div class="team-badge">TEAM B</div>
+  <div class="title-wrap">
+    <h1>潜伏者 · 沙漠民兵</h1>
+    <div class="sub">Militia · Desert Guerilla / AK-47 Operator</div>
+  </div>
+</header>
+
+<!-- 悬浮侧栏展开按钮（侧栏折叠时显示） -->
+<button id="toggle-sidebar-btn" title="查看角色信息">
+  <span>📋 角色信息</span>
+</button>
+
+<!-- 右侧可折叠信息侧栏 -->
+<aside id="info-sidebar">
+  <div class="sidebar-header">
+    <h2>角色档案 & 规范</h2>
+    <button class="close-btn" id="close-sidebar-btn" title="收起面板">✕</button>
+  </div>
+  <div class="sidebar-content">
+    <div class="ref-card">
+      <img id="ref-img" src="assets/concepts/militia-v3.png" alt="沙漠民兵原画">
+      <div class="ref-tag">设计原画 · militia-v3.png</div>
+    </div>
+
+    <div class="meta-list">
+      <div class="meta-item">
+        <span class="meta-label">阵营归属</span>
+        <span class="meta-val" style="color:#ff5a4d;">潜伏者 (TEAM.B)</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">模型构建器</span>
+        <span class="meta-val" style="font-size:11.5px;">buildMilitiaMesh</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">源码文件</span>
+        <span class="meta-val" style="font-size:11px;">js/soldier_models/militia.js</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">标准全高</span>
+        <span class="meta-val">~1.75m / 面向 -Z</span>
+      </div>
+      <div>
+        <span class="meta-label">视觉特征</span>
+        <div class="meta-features">
+          <span class="feature-pill">棋盘格头巾</span>
+          <span class="feature-pill">卡其长衬衫</span>
+          <span class="feature-pill">橄榄胸挂(4联弹匣)</span>
+          <span class="feature-pill">左臂红袖章</span>
+          <span class="feature-pill">AK-47 经典步枪</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-box">
+      <b>3D 舞台交互指南</b><br>
+      • 鼠标左键拖动：多维自由轨道旋转<br>
+      • 鼠标滚轮缩放：推拉观察微观细节<br>
+      • 鼠标右键拖动：视点空间平移<br>
+      • 底部控制坞：切换待机/行走/瞄准动画、部件分解与线框检查
+    </div>
+  </div>
+</aside>
+
+<!-- 视口左下角小提示 -->
+<div id="viewport-hint">
+  🖱️ 左键旋转 · 滚轮缩放 · 右键平移
+</div>
+
+<!-- 底部悬浮控制台 -->
+<nav id="control-dock">
+  <!-- 动画状态机组 -->
+  <div class="btn-group" id="anim-group">
+    <button class="ctrl-btn active" data-anim="idle" title="轻微呼吸起伏与头部微动">
+      <span class="indicator"></span>待机 Idle
+    </button>
+    <button class="ctrl-btn" data-anim="walk" title="腿部反相迈步与身体上下颠簸">
+      <span class="indicator"></span>行走 Walk
+    </button>
+    <button class="ctrl-btn" data-anim="aim" title="AK-47 抬平瞄准与头部俯仰协同">
+      <span class="indicator"></span>瞄准 Aim
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 功能切换组 -->
+  <div class="btn-group">
+    <button class="ctrl-btn" id="btn-turntable" title="整台自动匀速旋转检视">
+      <span class="indicator"></span>转盘 Turntable
+    </button>
+    <button class="ctrl-btn" id="btn-explode" title="各顶层部件沿质心向外缓动分离">
+      <span class="indicator"></span>分解 Explode
+    </button>
+    <button class="ctrl-btn" id="btn-wire" title="切换全模型线框渲染模式">
+      <span class="indicator"></span>线框 Wireframe
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 视角重置 -->
+  <div class="btn-group">
+    <button class="ctrl-btn" id="btn-reset-cam" title="恢复默认正面 3/4 观察位">
+      重置视角
+    </button>
+  </div>
+</nav>
+
+<div id="err"></div>
+
+<script type="module" src="./js/demo/militia-demo.js"></script>
+</body>
+</html>

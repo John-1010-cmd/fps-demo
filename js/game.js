@@ -1,12 +1,12 @@
 // ===== 游戏主逻辑：状态机 / 命中判定 / 比赛流程 =====
 import * as THREE from 'three';
-import { CONFIG, WEAPONS, MELEE, THROWABLES, TEAM, BOT_NAMES } from './config.js';
+import { CONFIG, WEAPONS, MELEE, THROWABLES, TEAM, BOT_NAMES, CYCLE_ORDER } from './config.js';
 import { raycastWorld, raySphere, rayAABB, segmentClear, clamp, lerp, damp, rand } from './utils.js';
 import { buildWorld } from './map.js';
 import { Effects } from './effects.js';
 import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
-import { Throwable, Shuriken } from './weapons.js';
+import { Throwable, Shuriken, DroppedWeapon } from './weapons.js';
 import { PlayerController, BotController } from './soldiers.js';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _muzzle = new THREE.Vector3();
@@ -24,6 +24,7 @@ export class Game {
     this.playerTeam = 'A';
     this.soldiers = [];
     this.projectiles = [];
+    this.droppedWeapons = [];
     this.smokeVolumes = [];
     this.respawnQueue = [];
     this.multiKills = 0;
@@ -111,6 +112,7 @@ export class Game {
       bannerSub = `率先取得 ${this.scoreCap} 次击杀获胜`;
     }
     this.scores = { A: 0, B: 0 };
+    this.player.kills = 0; this.player.deaths = 0; this.player.assists = 0;
     this.totalKills = 0;
     this.firstBlood = false;
     this.multiKills = 0;
@@ -147,6 +149,26 @@ export class Game {
     if (!this.autotest) this.lockPointer();
   }
 
+  dropWeapon(soldier) {
+    const id = soldier.currentWeaponId === 'melee' ? soldier.meleeWeapon.variant : soldier.currentWeaponId;
+    const botRifle = !soldier.isPlayer && soldier.currentWeaponId === 'rifle' && soldier.mesh;
+    const source = botRifle ? soldier.mesh.weapon : this.player.viewModels[id]?.group;
+    if (!source) return;
+
+    let origin;
+    if (botRifle) {
+      soldier.mesh.group.position.copy(soldier.pos);
+      soldier.mesh.group.rotation.y = soldier.yaw;
+      soldier.mesh.arms.rotation.x = soldier.pitch;
+      soldier.mesh.group.updateWorldMatrix(true, true);
+      origin = new THREE.Box3().setFromObject(source).getCenter(new THREE.Vector3());
+    } else {
+      origin = new THREE.Vector3(soldier.pos.x, soldier.pos.y + soldier.eyeHeight - 0.3, soldier.pos.z);
+    }
+    this.droppedWeapons.push(new DroppedWeapon(this.scene, this.world.colliders, source, origin, soldier.yaw, soldier.body.vel));
+    if (this.droppedWeapons.length > 24) this.droppedWeapons.shift().dispose();
+  }
+
   cleanupMatch() {
     for (const s of this.soldiers) {
       if (s.mesh) { this.scene.remove(s.mesh.group); s.mesh = null; }
@@ -154,6 +176,8 @@ export class Game {
     this.soldiers = this.soldiers.filter(s => s.isPlayer);
     for (const p of this.projectiles) p.dispose();
     this.projectiles = [];
+    for (const weapon of this.droppedWeapons) weapon.dispose();
+    this.droppedWeapons = [];
     this.smokeVolumes = [];
     this.respawnQueue = [];
     this.hud.hideRespawn();
@@ -162,6 +186,8 @@ export class Game {
 
   endMatch() {
     this.state = 'over';
+    for (const weapon of this.droppedWeapons) weapon.dispose();
+    this.droppedWeapons = [];
     document.exitPointerLock?.();
     const a = this.scores.A, b = this.scores.B;
     const win = a > b;
@@ -205,6 +231,7 @@ export class Game {
     s.body.h = CONFIG.player.height;
     s.hp = s.maxHp;
     s.alive = true;
+    s.deadTimer = 0;
     s.crouching = false;
     s.ads = 0; s.adsHeld = false;
     s.yaw = s.team === 'A' ? 0 : Math.PI;
@@ -224,10 +251,19 @@ export class Game {
     }
     if (s.mesh) {
       s.mesh.group.visible = true;
-      s.mesh.group.rotation.x = 0;
+      s.mesh.group.position.copy(s.pos);
+      s.mesh.group.rotation.set(0, s.yaw, 0);
+      s.mesh.group.scale.y = 1;
+      s.mesh.arms.rotation.set(0, 0, 0);
+      s.mesh.head.rotation.x = 0;
+      s.mesh.legL.rotation.x = 0;
+      s.mesh.legR.rotation.x = 0;
+      s.mesh.weapon.visible = true;
     }
     if (s.isPlayer) {
       s.keys.clear(); s.fireHeld = false;
+      s.deathFromY = null;
+      if (s.viewModels.rifle) s.viewModels.rifle.group.visible = true;
       this.hud.hideRespawn();
       this.hud.hideDamageReport();
     } else {
@@ -498,17 +534,20 @@ export class Game {
       this.firstBlood = true;
       this.hud.banner('首杀', `${attacker.name} 拿下首杀`, 1500);
     }
+    const specialKill = headshot ? 'headshotKill' : weaponId === 'frag' ? 'fragKill' : MELEE[weaponId] ? 'meleeKill' : null;
     if (attacker && attacker.isPlayer && !suicide) {
       if (this.time - this.lastKillAt < 4.5) this.multiKills++;
       else this.multiKills = 1;
       this.lastKillAt = this.time;
       this.hud.killstreak(this.multiKills, headshot);
       this.effects.shake(0.12 + Math.min(this.multiKills, 5) * 0.04);
-      if (this.multiKills >= 2) {
-        this.audio.multikill(this.multiKills);
-      } else if (this.multiKills === 1) {
-        this.audio.killConfirm();
+      if (!specialKill) {
+        if (this.multiKills >= 2) this.audio.multikill(this.multiKills);
+        else this.audio.killConfirm();
       }
+    }
+    if (!suicide && specialKill) {
+      this.audio[specialKill](attacker.isPlayer ? null : this.spatial(victim.pos));
     }
 
     // 重生排队
@@ -549,9 +588,40 @@ export class Game {
       if (!id) for (const o of overlayIds) document.getElementById(o).classList.remove('visible');
     };
 
+    let lockPending = false;
+    const resumeButton = document.getElementById('btn-resume');
+    const showLockHint = () => {
+      if ((this.state !== 'playing' && this.state !== 'paused') || document.pointerLockElement) return;
+      this.hud.setHint('点击画面锁定鼠标以继续');
+      if (this.state === 'paused') resumeButton.textContent = '请再次点击继续战斗';
+    };
+    const handleLockError = (error) => {
+      if (error?.name === 'SecurityError' || error?.name === 'NotAllowedError') {
+        showLockHint();
+        return;
+      }
+      console.error('鼠标锁定请求失败', error);
+      throw error;
+    };
+
     this.lockPointer = () => {
-      if (this.autotest) return;
-      canvas.requestPointerLock?.();
+      if (this.autotest || (this.state !== 'playing' && this.state !== 'paused') || document.pointerLockElement || lockPending) return;
+      let request;
+      try {
+        request = canvas.requestPointerLock?.();
+      } catch (error) {
+        handleLockError(error);
+        return;
+      }
+      if (!request || typeof request.then !== 'function') return;
+      lockPending = true;
+      Promise.resolve(request).then(
+        () => { lockPending = false; },
+        (error) => {
+          lockPending = false;
+          handleLockError(error);
+        },
+      );
     };
 
     canvas.addEventListener('click', () => {
@@ -560,6 +630,10 @@ export class Game {
 
     document.addEventListener('pointerlockchange', () => {
       const locked = !!document.pointerLockElement;
+      if (locked) {
+        this.hud.setHint('');
+        resumeButton.textContent = '继续战斗';
+      }
       if (!locked && this.state === 'playing' && !this.autotest) {
         this.state = 'paused';
         this.showOverlay('menu-pause');
@@ -569,10 +643,7 @@ export class Game {
         this.showOverlay(null);
       }
     });
-    document.addEventListener('pointerlockerror', () => {
-      this.hud.setHint('点击画面锁定鼠标以继续');
-      setTimeout(() => this.hud.setHint(''), 2500);
-    });
+    document.addEventListener('pointerlockerror', showLockHint);
 
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab') {
@@ -584,6 +655,12 @@ export class Game {
       this.player.keys.add(e.code);
       if (e.code === 'KeyR') this.player.weapon.startReload?.(this, this.player);
       if (e.code === 'KeyG') this.player.throwGrenade();
+      if (e.code === 'KeyQ' || e.code === 'KeyE') {   // Q 反序 / E 正序循环切枪
+        let i = CYCLE_ORDER.indexOf(this.player.currentWeaponId);
+        if (i < 0) i = 0;
+        i = (i + (e.code === 'KeyE' ? 1 : CYCLE_ORDER.length - 1)) % CYCLE_ORDER.length;
+        this.player.switchWeapon(CYCLE_ORDER[i]);
+      }
       if (e.code.startsWith('Digit')) {
         const n = parseInt(e.code.slice(5));
         if (n >= 1 && n <= 6) this.player.switchSlot(n);
@@ -611,11 +688,10 @@ export class Game {
     });
     addEventListener('wheel', (e) => {
       if (this.state !== 'playing') return;
-      const order = ['rifle', 'melee', 'pistol', 'sniper', 'shotgun'];
-      let i = order.indexOf(this.player.currentWeaponId);
+      let i = CYCLE_ORDER.indexOf(this.player.currentWeaponId);
       if (i < 0) i = 0;
-      i = (i + (e.deltaY > 0 ? 1 : order.length - 1)) % order.length;
-      this.player.switchWeapon(order[i]);
+      i = (i + (e.deltaY > 0 ? 1 : CYCLE_ORDER.length - 1)) % CYCLE_ORDER.length;
+      this.player.switchWeapon(CYCLE_ORDER[i]);
     }, { passive: true });
     addEventListener('contextmenu', (e) => e.preventDefault());
   }
@@ -636,6 +712,12 @@ export class Game {
         if (!this.projectiles[i].update(dt)) {
           this.projectiles[i].dispose();
           this.projectiles.splice(i, 1);
+        }
+      }
+      for (let i = this.droppedWeapons.length - 1; i >= 0; i--) {
+        if (!this.droppedWeapons[i].update(dt)) {
+          this.droppedWeapons[i].dispose();
+          this.droppedWeapons.splice(i, 1);
         }
       }
       // 烟幕清理
@@ -683,6 +765,7 @@ export class Game {
       // HUD
       const p = this.player;
       this.hud.setHealth(p.hp, p.maxHp);
+      this.hud.setKillCount(p.kills);
       this.hud.setWeapon(p);
       this.hud.setStance(p.crouching ? '蹲伏' : p.keys.has('ShiftLeft') && p.speed2D > 4.5 ? '冲刺' : '站立',
         p.hp < p.maxHp && this.time - p.lastDamageAt > CONFIG.player.regenDelay);

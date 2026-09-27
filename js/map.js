@@ -209,7 +209,7 @@ export function buildWorld(scene) {
     new THREE.MeshPhongMaterial({ map: texWater, color: 0x9fb8c8, shininess: 50, specular: 0x33495a })
   );
   water.rotation.x = -Math.PI / 2;
-  water.position.y = -2.8;
+  water.position.y = -4.2;
   scene.add(water);
 
   // ---------- 灯光 ----------
@@ -225,11 +225,69 @@ export function buildWorld(scene) {
   world.sun = sun;
 
   // ---------- 船体 ----------
-  box(0, -1.2, 0, 25.2, 1.2, 85.2, matDark, { mini: false, cast: false });   // 甲板 slab
-  const deckTop = new THREE.Mesh(new THREE.PlaneGeometry(25.2, 85.2), matDeck);
-  deckTop.rotation.x = -Math.PI / 2; deckTop.position.y = 0.012; deckTop.receiveShadow = true;
-  scene.add(deckTop);
-  box(0, -3.4, 0, 27.5, 2.4, 87.5, matHull, { collide: false, mini: false, cast: false }); // 船体水线
+  // ---------- 甲板（中央整块 + 两侧地道带分段镂空，兼作地道顶） ----------
+  const STRIP_X = 9.4, HULL_X = 12.6;        // 地道带 x 范围 [±9.4, ±12.6]
+  const TUN_Z = 24.0, STAIR_Z = 28.0;        // 地道贯通段 |z|≤24 / 阶梯井口 |z|∈[24,28]
+  const TUN_FLOOR = -3.4, DECK_B = -1.2;     // 地道地面 / 甲板底(地道顶)，净高 2.2m
+  box(0, DECK_B, 0, STRIP_X * 2, 1.2, 85.2, matDark, { mini: false, cast: false });
+  const deckSegs = [[-42.6, -STAIR_Z], [-TUN_Z, TUN_Z], [STAIR_Z, 42.6]];
+  for (const sx of [-1, 1]) {
+    const cx = sx * (STRIP_X + HULL_X) / 2;  // ±11
+    for (const [z0, z1] of deckSegs) {
+      box(cx, DECK_B, (z0 + z1) / 2, HULL_X - STRIP_X, 1.2, z1 - z0, matDark, { mini: false, cast: false });
+    }
+  }
+  // 甲板视觉面按碰撞分段铺设（克隆纹理并换算 repeat/offset，保持黄中线在 x=0）
+  const deckPiece = (x0, x1, z0, z1) => {
+    const w = x1 - x0, d = z1 - z0;
+    const t = texDeck.clone();
+    t.needsUpdate = true;
+    t.repeat.set(6 * w / 25.2, 20 * d / 85.2);
+    t.offset.set(6 * (x0 + 12.6) / 25.2, 20 * (42.6 - z1) / 85.2);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
+      new THREE.MeshPhongMaterial({ map: t, shininess: 8 }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set((x0 + x1) / 2, 0.012, (z0 + z1) / 2);
+    m.receiveShadow = true;
+    scene.add(m);
+  };
+  deckPiece(-STRIP_X, STRIP_X, -42.6, 42.6);
+  for (const sx of [-1, 1]) for (const [z0, z1] of deckSegs) {
+    deckPiece(Math.min(sx * STRIP_X, sx * HULL_X), Math.max(sx * STRIP_X, sx * HULL_X), z0, z1);
+  }
+
+  // ---------- 两侧地道：在侧面集装箱附近出入口，快速穿插偷袭 ----------
+  const matLamp = new THREE.MeshBasicMaterial({ color: 0xffd9a8 });
+  for (const sx of [-1, 1]) {
+    const cx = sx * (STRIP_X + HULL_X) / 2;          // ±11
+    const w = HULL_X - STRIP_X;                      // 3.2
+    // 地面 / 内壁 / 外壁（墙体从 y=-3.9 封到甲板底，覆盖阶梯井口段 |z|≤28）
+    // 台阶段长度 3.05m，井口脚下留 0.95m 平地缓冲，避免登第一级台阶时头顶被甲板沿挡回
+    const STAIR_RUN = 3.05;
+    box(cx, TUN_FLOOR - 0.5, 0, w, 0.5, (STAIR_Z - STAIR_RUN) * 2, matDark, { mini: false, cast: false });
+    box(sx * (STRIP_X + 0.15), -3.9, 0, 0.3, DECK_B + 3.9, STAIR_Z * 2, matMetal, { mini: false, cast: false });
+    box(sx * (HULL_X - 0.15), -3.9, 0, 0.3, DECK_B + 3.9, STAIR_Z * 2, matMetal, { mini: false, cast: false });
+    // 两端阶梯井：6 级实心台阶从甲板(y=0)下到地道(y=-3.4)，级高≈0.486 可直接走上
+    const STEPS = 6, riseH = -TUN_FLOOR / 7, run = STAIR_RUN / STEPS;
+    for (const sz of [-1, 1]) {
+      for (let i = 0; i < STEPS; i++) {
+        const top = -(STEPS - i) * riseH;
+        box(cx, -3.9, sz * (STAIR_Z - STAIR_RUN + (i + 0.5) * run), w, top + 3.9, run + 0.02, matMetal, { mini: false, cast: false });
+      }
+      // 井口末端封口墙（甲板下方）
+      box(cx, -3.9, sz * STAIR_Z, w, DECK_B + 3.9, 0.3, matMetal, { mini: false, cast: false });
+    }
+    // 地道照明灯带（视觉）+ 点光源
+    for (const lz of [-16, 0, 16]) {
+      box(cx, DECK_B - 0.06, lz, 0.5, 0.06, 1.6, matLamp, { collide: false, mini: false, cast: false, receive: false });
+    }
+    for (const lz of [-12, 12]) {
+      const pl = new THREE.PointLight(0xffc98a, 5, 18, 1.8);
+      pl.position.set(cx, -1.6, lz);
+      scene.add(pl);
+    }
+  }
+  box(0, -4.9, 0, 27.5, 4.0, 87.5, matHull, { collide: false, mini: false, cast: false }); // 船体水线
   // 船头楔形
   const bow = new THREE.Mesh(geoBox, matHull);
   bow.scale.set(18, 4, 14); bow.position.set(0, -1.6, -48); bow.rotation.y = Math.PI / 4;
@@ -283,9 +341,9 @@ export function buildWorld(scene) {
     cylinder(0, 7.8, zs(41), 0.18, 4.5, matDark, { mini: false });
     const radar = box(0, 10.6, zs(41), 2.6, 0.5, 0.4, matWhite, { collide: false, mini: false });
     (dynamic.radars ||= []).push(radar);
-    // 烟囱
-    cylinder(-10.5, 0, zs(40), 1.1, 7, matRust);
-    cylinder(10.5, 0, zs(40), 1.1, 7, matRust);
+    // 烟囱（靠舷尾端，避开两侧地道阶梯井口）
+    cylinder(-10.5, 0, zs(41.5), 1.1, 7, matRust);
+    cylinder(10.5, 0, zs(41.5), 1.1, 7, matRust);
     // 基地掩体墙 W1（三段集装箱，两个 4m 缺口）
     container(-9, zs(33.5), 'x', 5);
     container(0, zs(33.5), 'x', 5);
@@ -334,7 +392,6 @@ export function buildWorld(scene) {
 
   const midCrates = [
     [-9.1, 6.2], [9.1, -6.2],
-    [-10.6, 26.5], [10.6, -26.5],
   ];
   for (const [x, z] of midCrates) box(x, 0, z, 1.15, 1.45, 1.15, matWood);
 
@@ -343,6 +400,15 @@ export function buildWorld(scene) {
     [0.6, 18.5], [-0.6, -18.5],
   ];
   for (const [x, z] of highCrates) box(x, 0, z, 1.35, 2.1, 1.35, matWood);
+
+  // 四处井口外侧留出 0.75m 通路，再由矮箱→中箱→高箱跃上侧面集装箱
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    box(sx * 7.5, 0, sz * 30.1, 1.3, 0.8, 1.3, matWood);
+    box(sx * 7.5, 0, sz * 28, 1.3, 1.45, 1.3, matWood);
+    box(sx * 7.5, 0, sz * 26, 1.4, 2.1, 1.4, matWood);
+    box(sx * 12, 0, sz * 29.15, 0.65, 1.35, 0.55, matMetal);
+    box(sx * 8, CH, sz * 21.3, 1.85, 0.85, 0.25, matMetal);
+  }
 
   // 油桶
   for (const [x, z] of [[-11.2, -14], [-10.4, -13.4], [-11, -12.8], [11.2, 14], [10.4, 13.4], [11, 12.8],
