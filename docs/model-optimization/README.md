@@ -2,6 +2,22 @@
 
 > 本文档是本次优化的总索引与决策记录。后续每个模型的 spec、评审记录、rig 报告都存放在本目录下。
 
+## 实施规划文档（plan/，2026-09-27 编制）
+
+详细实施规划共 7 篇，存放在 `plan/` 子目录，按编号顺序阅读：
+
+| 文档 | 内容 |
+|---|---|
+| [plan/00-master-plan.md](plan/00-master-plan.md) | 总实施规划：WBS、里程碑与交付物、阶段依赖、验收总表、风险登记册、变更管理 |
+| [plan/01-environment-setup.md](plan/01-environment-setup.md) | Phase 0 环境准备与工具链验证（Python 3.10+、forge 测试、插件注册、视觉适配器） |
+| [plan/02-pipeline-conventions.md](plan/02-pipeline-conventions.md) | 流水线通用规范：目录命名、spec 权威原则、工厂代码约定、渲染栈、质量门、纹理产物管理 |
+| [plan/03-hero-militia.md](plan/03-hero-militia.md) | Phase 1a · militia 英雄版 11 步全流程（试点，最详） |
+| [plan/04-hero-swat.md](plan/04-hero-swat.md) | Phase 1b · swat 英雄版 11 步（复用 militia 经验，写差异点） |
+| [plan/05-demo-integration.md](plan/05-demo-integration.md) | demo 页集成：AnimationMixer 切换、PBR+PMREM 渲染栈、无头验证、性能预算 |
+| [plan/06-phase2-weapons.md](plan/06-phase2-weapons.md) | Phase 2 · AK-47 / M4A1 武器英雄版与装配接口 |
+
+> 各篇中的决策点已于 2026-09-27 经用户拍板，全部采纳推荐方案并回写为「决策记录」章节；其中分解视图全局统一为静态 T-pose 部件分解陈列（05 篇方案 B）。
+
 ## 目标
 
 - 人物（militia / swat）与武器（AK-47 / M4A1）重建为**展示级英雄版模型**，精细程度贴近 img2threejs 官方 showcase（sora 角色、AWP Medusa 武器）
