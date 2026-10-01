@@ -1,517 +1,329 @@
-# 流水线通用规范（Pipeline Conventions）
+# 02 · 流水线唯一契约
 
-> 本文档是 fps-demo 模型精细化优化规划文档集（`docs/model-optimization/plan/`）的通用规范篇，由 `03-hero-militia.md`、`04-hero-swat.md`、`05-demo-integration.md` 及 `06-phase2-weapons.md` 共同引用，确立所有英雄版模型构建、纹理生成、质量门禁、代码交付与版本管理共用的唯一准则。
+> v1.2 · 2026-10-01。本篇统一命名、坐标、接口、纹理、质量与证据口径。其他篇只能引用，不能另创“权威”副本。
+> 代码块使用 01 篇 PowerShell 前置。`<...>` 为待填参数，不是可原样执行的命令。
 
----
+## 1. ID、目录与唯一事实源
 
-## 1. 目标与范围
-
-- **目标**：为 Phase 1 角色英雄版（militia / swat）与 Phase 2 武器英雄版（AK-47 / M4A1）的重建提供标准化、可验证、可复现的统一规范，消除各实施阶段与多人/多智能体协作中的歧义。
-- **范围**：
-  - 工作区目录层级、命名法则及资产流转契约；
-  - Spec JSON 单一真理来源（SSOT）原则与变更流程；
-  - 英雄版工厂代码规范（纯原生 ES Module、确定性约束、工厂函数签名）；
-  - 双轨渲染栈划分与游戏版低模兼容性绝对隔离；
-  - 质量门禁体系（Blocking 阻断门 vs Advisory 建议门）、评审循环（3/pass, 6 total）执行与终止策略；
-  - 投影纹理烘焙管线与资产免手改覆盖准则；
-  - 评审归档与 Rig 报告的标准化文档模板；
-  - 原子化 Git 提交粒度与 Commit Message 规范。
-
----
-
-## 2. 前置依赖
-
-1. **总规划契约**：遵照 `docs/model-optimization/plan/00-master-plan.md` 的阶段拆分与里程碑；严格继承 `docs/model-optimization/README.md` 中 2026-09-27 确认的 4 项核心决策（安装 Python 3.10+、分离重建、投影烘焙、骨骼动画）。
-2. **环境准备就绪**：依赖 `docs/model-optimization/plan/01-environment-setup.md` 完成 Python 3.10+ 安装、img2threejs 核心单元测试以及 img2-character 插件安装与注册验证。
-3. **接口兼容契约**：严格遵循 `.img2threejs/STATE-NOTE.md` 中对现有游戏主干 `syncMesh` 契约与 `MeshPhongMaterial` 的冻结声明。
-
----
-
-## 3. 通用规范与实施细则
-
-### 3.1 目录与命名约定
-
-所有英雄版资产与过程产物严格按照如下统一结构与命名规范存放，禁止随意更改目录层级。
-
-#### 1) 局部工作区命名（`.img2threejs/hero-<who>/`）
-每个模型拥有独立工作空间，`<who>` 统一使用小写命名：`militia`、`swat`、`ak47`、`m4a1`。内部结构如下：
+资产 ID 固定为 **militia / swat / ak47 / m4**；显示名 M4A1 不改变 ID。禁止 `m4a1`、`hero-swat` 等混作资产 ID。
 
 ```text
-.img2threejs/hero-<who>/
-├── state.json                     # forge 流水线状态清单（由 state.py init/mark 维护）
-├── assessment.json                # 阶段 1 复杂度评级与解剖分析产物
-├── spec.json                      # 权威几何与材质规格定义（单一事实来源）
-├── camera-front.json              # 正面虚拟投影相机姿态（solve_camera_pose.py 产出）
-├── camera-side.json               # 侧面虚拟投影相机姿态（solve_camera_pose.py 产出）
-├── delight-front.png              # 正面去光照漫反射图（delight_albedo.py 产出）
-├── delight-side.png               # 侧面去光照漫反射图（delight_albedo.py 产出）
-├── bake-descriptor.json           # UV 烘焙任务描述符（bake_projected_texture.py 产出）
-├── rig-gate-payload.json          # Stage R6 骨骼与动画门禁度量数据包
-└── shots/                         # 评审与度量渲染截图归档目录
-    ├── round-0-front.png          # 第 0 轮（基线）四视角渲染截图
-    ├── round-0-right.png
-    ├── round-0-back.png
-    ├── round-0-left.png
-    ├── comparison-round-<N>.png   # 第 N 轮对比图表（make_comparison_sheet.py 产出）
-    └── turntable-round-<N>.png    # 转台连续视角拼图
+docs/model-optimization/
+  README.md
+  plan/00..06-*.md
+  HANDOFF.md                             当前进度/续接入口，不是验收契约
+  specs/<id>.json                         受管 sculpt spec 唯一作者源
+  recipes/<id>.json                       schema不足时的显式扩展配方
+  evidence/<run-id>/<id>/                 新实施的受管验收摘要与关键图片
+  rig-reports/<run-id>/<id>.md            原生门禁+项目验收，均标来源
+assets/hero/<id>/
+  build-manifest.json                    输入/版本/spec/配方/产物哈希
+  rig-data.json                          角色导出读取后的骨架/剪辑派生数据
+assets/textures/hero/
+  militia-albedo.png / swat-albedo.png    人物最终单张2048² albedo
+  ak47-wood-albedo.png / ak47-metal-albedo.png
+  m4-receiver-albedo.png / m4-polymer-albedo.png
+js/hero_models/
+  militia.js / swat.js / ak47.js / m4.js
+  common-rig.js / common-geometry.js      有验证用途才抽取，不提前建框架
+js/demo/
+  demo-common.js / hero-review.js / bake-runner.js
+  militia-demo.js / swat-demo.js / ak47-demo.js / m4-demo.js
+scripts/hero/
+  runner.mjs / export-mesh.mjs / validate-asset.mjs
+  export-rig-glb.mjs                     D-01已确认，M0待实现/验证
+hero-review.html / bake-runner.html
+css/hero-demo.css
+.img2threejs/runs/<run-id>/hero-<id>/
+  .img2threejs/state.json                此资产唯一 checklist state
+  assessment.json / reference-manifest.json
+  crops/ / landmarks/ / cameras/ / delight/ / bake/ / shots/
+  meshes-before.json / meshes-after.json / mesh-manifest.json
+  rig-reference.glb / rig-reference.json / rig-payload.json
+  sampled-clips.json / rig-gate-payload.json / project-report.json
 ```
 
-#### 2) 工厂代码路径与命名
-- 英雄版工厂源码存放于：`js/hero_models/<who>.js`
-  - 角色：`js/hero_models/militia.js`、`js/hero_models/swat.js`
-  - 武器：`js/hero_models/ak47.js`、`js/hero_models/m4a1.js`
-- 游戏现有低模路径保持不动：`js/soldier_models/militia.js`、`js/soldier_models/swat.js`、`js/soldier_models/common.js`。
+- spec 不放在 ignored 工作区作为唯一作者源；`state.py --state $State` 的 `--spec` 指向 `docs/.../specs/<id>.json` 的绝对路径。工作区快照标明“派生只读”，不得双向独立编辑。
+- spec 先声明比例/材质/层级/feature/pivot，再实现。现有 schema 不支持 UV、动画或配方字段时，放入受管 recipe 并以路径/哈希关联，另做项目校验；禁止虚构 schema 字段或声称 validator 已验证未知字段。
+- 作者源是 spec/recipe；GLB、rig-data、PNG、manifest 是可重建派生物，不是第二作者源。工厂消费受管数据或可验证的生成常量，不能手调造型数字后忘记源数据。
+- 改作者源 → strict validate + 自有扩展校验 → 构建/烘焙 → 捕获/门禁 → 关联版本。任何几何/UV 改动使贴图、冻结、rig、截图失效；正确流程是退回相应 pass，保留旧 manifest 后重新验收，不能在失败的绑定后偷偷再 freeze。
+- 输入原图被 Git ignore：记录 SHA-256、可恢复备份与取得方式。受管关键证据不能全部丢在 ignored run；不要求把每帧截图都入库，但最终四视角、关键特写、缺陷/修复对比和摘要必须保留。
+- 旧 reviews/旧 HANDOFF 已按用户要求移除，不读取或恢复其结论。新 HANDOFF 只记录事实和下一步；新证据使用 `evidence/<run-id>/`，不重建旧评审目录。
+- 新 run 不能仅用文件存在判定新产物。检查输入/作者源/生成代码/工具/几何/UV/pose/渲染配置的依赖哈希；review 元数据的追加不等于造型变更，实际依赖集的构成由 M0 schema 固化。每条 review 指向捕获时的作者源快照和依赖哈希，避免把后来追加 reviewHistory 的文件哈希循环当成同一构建的依据。
 
-#### 3) 烘焙纹理资产命名（`assets/textures/hero/`）
-纹理产物一律输出至 `assets/textures/hero/`，分辨率标准统一为 1024×1024（武器或特写部件可选 2048×2048）：
-- `<who>-albedo-front.png`：正面去光照投影烘焙反照率贴图
-- `<who>-albedo-side.png`：侧面去光照投影烘焙反照率贴图
-- `<who>-combined-albedo.png`：正侧双视图融合与 UV 缝合后的最终基础色贴图（主漫反射贴图）
-- `<who>-normal.png`：（可选）由 PBR 证据或高模烘焙生成的切线空间法线贴图
-- `<who>-roughness.png`：（可选）粗糙度/金属度遮罩贴图
+## 2. 坐标、左右与姿态
 
-#### 4) 评审与门禁截图命名规约
-四视角截图严格按照世界坐标逆时针方位角进行命名（0° 正视、90° 右侧视、180° 后视、270° 左侧视）：
-- `shots/round-<N>-front.png`（正视，Camera at +Z facing -Z）
-- `shots/round-<N>-right.png`（右侧视，Camera at +X facing -X）
-- `shots/round-<N>-back.png`（后视，Camera at -Z facing +Z）
-- `shots/round-<N>-left.png`（左侧视，Camera at -X facing +X）
-- 动画门禁扫描快照（G10 扫描，共 176 帧）：命名按 `shots/sweep-<clip>-t<time>-side<0|1>-az<0|1>.png` 归档。
+### 2.1 人物的两个空间
 
----
+| 空间 | 前/上 | 解剖左/右 | 用途 |
+|---|---|---|---|
+| rig-local（建模/绑定/插件） | +Z / +Y | 左 +X，右 -X | spec、joint order、G7、局部测量 |
+| display（人物展示根） | -Z / +Y | 左 -X，右 +X | 游戏风格朝向、机位、演示 |
 
-### 3.2 Spec JSON 权威原则
+全项目单位为米。`figureHeight=H` 从不含武器、地台或分解位移的角色 bind-pose 网格 bounds 测得，记录所含头部装备与网格 ID；不用画布高度、硬编码 1.75 或随动画变化的世界 AABB 当 H。局部比例阈值才归一化到 H，G1/G3/权重等按原生 schema 的变换/数值容差，不把所有数字乘 H。
 
-#### 1) 核心原则：数据权威，代码从属
-- **重建决策只存 `spec.json`，不存代码孤本**。
-- 部件层级、比例尺寸、顶点拓扑、材质 PBR 参数（色值、粗糙度、金属度）、参考图特征Review目标（`featureReviewTargets`）、骨骼绑定结构、关键锚点位置，均必须首先完整声明在 `.img2threejs/hero-<who>/spec.json` 中。
-- `js/hero_models/<who>.js` 只是 `spec.json` 的代码实现与执行器，禁止在 JS 代码中硬编码未经 Spec 声明的私有魔法数字或结构调整。
+display wrapper 只做 **Y 轴旋转 π** 和从网格 bounds 得到的居中/着地平移；不能用负缩放当旋转。所有 model/rig/parts 位于 wrapper 下。规范转换 `p_display = R_y(π) p_rig + offset`，对方向只应用旋转，不加平移。
 
-#### 2) Spec 变更流程（闭环四步法）
-任何模型造型、尺寸、特征或材质的调整，必须遵守以下执行流程：
-1. **编辑 Spec**：在 `.img2threejs/hero-<who>/spec.json` 中修改对应属性（或运行 `new_sculpt_spec.py` 增量更新）；
-2. **格式与质量校验**：
-   ```bash
-   # Windows Git Bash（支持 python3 或 py -3 回退）
-   python3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage2_spec/validate_sculpt_spec.py" \
-     .img2threejs/hero-<who>/spec.json --strict-quality || \
-   py -3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage2_spec/validate_sculpt_spec.py" \
-     .img2threejs/hero-<who>/spec.json --strict-quality
-   ```
-   **Pass 标准**：终端输出 `PASS`，且无任何 `strict quality failure` 阻断错误。
-3. **同步实现**：依据验证通过的 Spec，同步更新 `js/hero_models/<who>.js` 中的网格装配逻辑；
-4. **版本同步提交**：在 Git 提交中同时包含 `spec.json` 与 `js/hero_models/<who>.js`，确保代码与规范版本永不脱节。
+- 原图中人物自己的左不等于画面左。militia 正面图中红臂章在画面右，即解剖左；rig-local 为 +X，display 为 -X。
+- G7 在 rig-local 测，并由**参考图独立标注**左右节点；不能按点 x 正负重新命名左/右来让检查必然通过。
+- 对称部件镜像仅 `x → -x`，z 不变；翻转 triangle winding 并处理法线/切线。镜像正确还需内外侧特征独立核验；非对称臂章不复制。
+- 人物标准正面机位在 display 的 **-Z**，朝 +Z；解剖右侧机位 +X，朝 -X；背面 +Z，朝 -Z；左侧 -X，朝 +X。命名 front/right/back/left 指解剖方向，而非屏幕方向。相机四向是验收控制视角，不冒称对应参考图的精确相机。
+- rig/referencePose/crop/camera 的坐标空间写入 manifest；不得拿一套截图符号套另一套骨骼局部坐标。
 
----
+### 2.2 姿态分离
 
-### 3.3 英雄版工厂代码规范
+绑定姿态是稳定 T-pose；匹配参考的姿态是 `referencePose`，用于原画对照与投影；`idle/walk/aim` 是展示剪辑。原图不是 T-pose，也不是默认水平瞄准，不能用 T-pose 与原画直接投影全身。
 
-#### 1) 纯 JS ES Module 与无构建环境约束
-- **零编译构建**：本项目无 Webpack/Vite/Rollup 或 Babel/TypeScript 编译流水线，工厂文件必须是标准浏览器原生支持的 ES Module。
-- **依赖导入规范**：统一通过原生 `importmap` 导入 Three.js，绝对路径与包名按项目现有范式保持一致：
-  ```javascript
-  import * as THREE from 'three';
-  ```
-  严禁直接引入 Node.js 运行时内置模块（如 `path`、`fs`）或项目根目录 `package.json` 未在前端映射的第三方库。
+静态 pass 可以在隔离实例中使用草案骨架/权重或受管形变生成 referencePose 与关节预检，须导出实际 posed positions，固定同一 bind geometry/UV/part ID；这只是预检，不标记正式 freeze/rig/gate done。interaction 阶段验证静态分件/pivot/socket/控制接口，完整动画诊断在正式 rig 九步后完成。
 
-#### 2) 确定性生成法则（Deterministic Generation）
-- **严格禁用 `Math.random()`**。
-- 英雄版模型在相同参数下必须产生百分之百字节级一致的几何网格与 UV 拓扑。若需要程序化扰动（例如布料微褶皱、表面微噪点），必须采用固定种子（Seed）的伪随机算法（PRNG）或纯基于顶点坐标与正余弦的数学解析式。
+投影时在匹配参考的姿态建立 world-space 顶点/相机对应，将颜色写入同一 mesh 的**固定 UV**；恢复 bind pose 时 UV 不变。最终绑定后复验 referencePose 的表面位置/法线与烘焙输入：权重、骨架或姿态改变投影对应超过声明容差时，即使 bind geometry/UV 未变，也须使受影响 bake/材质/图片证据失效并重烘焙；不以旧 PNG 存在代替验证，几何未改则不重 freeze。若该方式局部不可用，则分区匹配/遮挡屏蔽并标注缺测，不假称已经双视图融合。正侧两图姿态不一致时分别拟合并记录，不强迫共享错误姿态。
 
-#### 3) 工厂函数导出签名标准
-工厂模块统一导出**唯一**异步构建函数 `buildHero<Who>(options)`（人物：`buildHeroMilitia` / `buildHeroSwat`；武器：`buildHeroAK47` / `buildHeroM4`），返回开箱即用的完整展示对象。**禁止** `createHero<Who>`、`buildHero<Who>Mesh(T)`、`buildHero<Who>Mesh(THREE)` 等其他命名。
+### 2.3 武器空间
+
+武器独立根默认 +Y 上、-Z 沿枪管、+X 为射手右，单位米；原点取 rightHandGrip 的握持框架。挂到人物 rig-local 时通过 socket 全变换对齐，不硬加 Y 轴旋转或假定手骨轴与武器一致。按当前姿态评估枪口，不能要求 referencePose 中斜向持枪时仍水平 -Z。
+
+## 3. 工厂与运行时契约
+
+纯 JS ES Module，`import * as THREE from 'three'` 与项目 r160 importmap 一致，不引入前端 Node 模块或不匹配的新版 addon。相同输入/种子产生相同顶点、索引、UV/rig 数据；不要求带时间戳/UUID 的完整 Three.js 对象 JSON 字节相同。禁止 `Math.random()` 影响可复现几何。
+
+人物导出 `buildHeroMilitia(options)` / `buildHeroSwat(options)`，异步 resolve 后所有必需资源加载完成；失败 reject，不回静态低模冒充成功：
 
 ```javascript
-/**
- * @typedef {Object} HeroModelOptions
- * @property {string} [texturePath]       - 自定义反照率贴图路径
- * @property {boolean} [wireframe=false]   - 是否开启线框模式
- * @property {boolean} [castShadow=true]  - 是否产生投影
- * @property {boolean} [receiveShadow=true]- 是否接收投影
- */
-
-/**
- * 构建并返回英雄版模型全套运行时对象
- * @param {HeroModelOptions} [options={}]
- * @returns {Promise<{
- *   group: THREE.Group,
- *   skinnedMesh: THREE.SkinnedMesh,
- *   skeleton: THREE.Skeleton,
- *   mixer: THREE.AnimationMixer,
- *   clips: Object<string, THREE.AnimationClip>,
- *   anchors: Object<string, THREE.Object3D>,
- *   dispose: () => void
- * }>}
- */
-export async function buildHeroMilitia(options = {}) {  // buildHeroSwat / buildHeroAK47 / buildHeroM4 同构
-  // 1. 读取并应用 options 配置
-  // 2. 异步加载烘焙贴图并设置 colorSpace = THREE.SRGBColorSpace
-  // 3. 构建几何体并计算确定性顶点属性
-  // 4. 构建骨骼 Armature，执行 updateMatrixWorld(true)
-  // 5. 绑定 SkinnedMesh：mesh.bind(skeleton, new THREE.Matrix4())
-  // 6. 初始化 AnimationMixer 并绑定命名剪辑 (idle, walk, aim 等)
-  // 7. 导出结构与资源释放器 dispose()
+// 契约形状示意，不是已存在的实现
+{
+  group,          // display wrapper，挂到 demo 的 modelRoot
+  skinnedMesh,    // 主网格，必须是 skinnedMeshes[0] 的同一引用
+  skinnedMeshes,  // 所有必需蒙皮网格数组；非空
+  skeleton,      // 按实际 skin.joints 顺序的共享骨架
+  mixer,         // 仅这一套 AnimationMixer，绑定完整模型根
+  clips,         // 普通对象字典：idle / walk / aim，不是 Map
+  anchors,       // 字典：socket_right_hand / socket_left_hand / socket_stock_contact
+  parts,         // 字典：稳定 partId → PartRecord
+  bounds,        // bind pose 的 THREE.Box3，明确测量空间
+  resetPose,     // 显式停动作并还原所有 bind TRS；不在普通播放每帧调用
+  dispose        // 幂等释放自有资源，不能释放另一实例/共享库资产
 }
 ```
 
-> **接口补充约定**：`clips` 为普通对象字典 `Object<string, THREE.AnimationClip>`（键 `idle` / `walk` / `aim`，可选 `death`），**不是 `Map`**（禁止 `clips.get(...)` 调用）。武器工厂（无骨骼蒙皮）返回 `Promise<{ group, parts, sockets, materials, actions, dispose }>`。
+`options` 仅明确支持 `textureBaseUrl`、`castShadow`、`receiveShadow`（及必要的验证配置）；不要在 demo 传未定义 `teamColor` 改原图色。路径默认基于 `import.meta.url`/manifest 定位，不随网页相对层级漂移。
 
-> **【已确认 2026-09-27：工厂函数签名与动画解耦设计】**
-> - **执行方案（采纳推荐）**：工厂函数作为单一门面，统一采用返回包含几何 `SkinnedMesh`、骨骼 `Skeleton`、`AnimationMixer`、剪辑字典 `clips`、关键锚点 `anchors` 及释放器 `dispose` 的开箱即用对象 `{ group, skinnedMesh, skeleton, mixer, clips, anchors, dispose }`，外部调用端一行代码即可完成挂载与播放；
-> - **备选方案（备选，未采纳）**：工厂函数仅同步返回几何与骨骼 `{ group, skinnedMesh, skeleton }`，动画数据由独立的 `js/hero_models/animator.js` 异步加载并挂载。
-> - *采纳理由*：该方案符合 demo 页轻量接入需求，避免 demo 页面产生过多组装样板代码。
+`PartRecord`：`node`（可为显式说明的语义代理）、稳定 `id`、`explodable`、`baseTransform`（位置/四元数/缩放完整 TRS）、`explodeVector`（含空间）、`attachment`/`skinningPolicy`；合批时另有真实 geometry range/instance/pick 与陈列代理映射，不能把一个空代理当渲染零件。字典与 spec 的部件清单一一对应。只展开**刚性独立组根**；child 同时展开会叠加两次，禁止。需蒙皮的袖口/布料层留在本体，不为了分解而割断它。
 
----
+武器导出 `buildHeroAK47(options)` / `buildHeroM4(options)`：
 
-### 3.4 渲染栈规范（英雄版 vs 游戏版）
-
-本项目采取**双轨渲染栈隔离原则**：英雄展示栈全面迈向次时代物理渲染（PBR），而现有游戏运行栈保持绝对冻结。
-
-```
-                     ┌───────────────────────────────────────────────┐
-                     │              fps-demo 项目渲染架构            │
-                     └──────────────────────┬────────────────────────┘
-                                            │
-               ┌────────────────────────────┴───────────────────────────┐
-               ▼                                                        ▼
-┌──────────────────────────────┐                         ┌──────────────────────────────┐
-│   游戏版低模管线（运行时）   │                         │    英雄版高精管线（展示级）  │
-├──────────────────────────────┤                         ├──────────────────────────────┤
-│ 页面：index.html             │                         │ 页面：demo-*.html, 评审台     │
-│ 模型：js/soldier_models/*.js │                         │ 模型：js/hero_models/*.js    │
-│ 材质：MeshPhongMaterial      │                         │ 材质：MeshStandardMaterial   │
-│ 贴图：基础色 / 纯色调色板    │                         │ 贴图：投影烘焙 sRGB PBR 贴图 │
-│ 光照：方向光 + 简单环境光    │                         │ 光照：PMREM 环境探针 + 三点光│
-│ 色调：常规 Gamma 空间        │                         │ 色调：ACESFilmicToneMapping  │
-│ 契约：syncMesh 六元组(绝对冻结)│                        │ 契约：真骨骼 + SkinnedMesh   │
-└──────────────────────────────┘                         └──────────────────────────────┘
+```javascript
+{
+  group, parts, sockets, materials, bounds, dispose,
+  actions // 普通对象；无次级机械动画时为空，UI不得显示可点击假按钮
+}
 ```
 
-#### 1) 游戏版低模与 `syncMesh` 契约绝对冻结声明
-依据 `.img2threejs/STATE-NOTE.md`，游戏主程序依赖的低模接口严禁触碰：
-- **返回值结构**：必须严格维持 `{ group, legL, legR, arms, head, gunTip }` 字段；
-- **固定锚点与原点约定**：
-  - `legL / legR`：原点位于髋部 `(±0.12, 0.82, 0)`，驱动属性为 `rotation.x`；
-  - `arms`：原点位于肩线 `(0, 1.32, 0)`，驱动属性为 `rotation.x`（俯仰），枪口朝向 `-Z`，`gunTip` 位于枪口；
-  - `head`：作为 torso 子节点，位于 `(0, 0.58, 0)`，驱动属性为 `rotation.x = pitch * 0.45`；
-  - 空间朝向：角色面向 `-Z`，自身右为 `+X`，站姿全高约 `1.72m ~ 1.75m`；
-- **材质约束**：必须继续使用 `THREE.MeshPhongMaterial`，禁止注入 PBR 材质或阴影开销过大的渲染特性。
+武器 `options.variant` 为 `showcase` 或 `character`，默认独立页 `showcase`；角色页显式选 `character`。`parts` 沿用 PartRecord 字典。
 
-#### 2) 英雄版 / Demo 页渲染栈规范
-展示页面（`demo-militia.html`、`demo-swat.html`、`model-review.html`）统一按如下标准配置：
-- **材质类型**：全面采用 `THREE.MeshStandardMaterial`，参数配置：
-  - `map`：分配烘焙反照率贴图，且显式指定 `texture.colorSpace = THREE.SRGBColorSpace;`；
-  - `roughness`：按 Spec 设定（通常织物 `0.8~0.9`，金属 `0.3~0.4`，皮肤 `0.6`）；
-  - `metalness`：按部件特性明确分离（金属机匣/枪管 `0.85~1.0`，布料/皮肤 `0.0`）；
-- **色调映射（Tone Mapping）**：
-  ```javascript
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
-  ```
-- **阴影设置**：启用 `THREE.PCFSoftShadowMap`，主光（Key Light）阴影贴图分辨率不少于 `2048×2048`，配置微小偏移 `bias = -0.0005` 防阴影自刺；
-- **环境照明**：采用 `PMREMGenerator` 处理的高保真 Studio 环境探针，配合冷暖补光（Fill Light）与边缘轮廓光（Rim Light）。
+`sockets` 只使用以下键：`rightHandGrip`、`leftHandGuard`、`stockShoulder`、`muzzleTip`、`ejectionPort`、`magWell`。每个值是带完整朝向的 Object3D，记录局部空间与轴；不用同时维护 `socket_barrel_tip/gunTip` 等重复别名。尺寸与位置由最终 spec 测得，不写死两款武器同一组数值。
 
-#### 3) 模型分解视图（Exploded View）呈现规范
-展示页面（`demo-militia.html`、`demo-swat.html` 等）的部件分解视图遵循以下统一规范：
-- **触发与复位机制**：触发分解时动画平滑暂停、模型归位标准姿态（T-pose）；再次触发时部件精准复位，无缝恢复动画播放；
-- **分件位移逻辑**：独立装具（头巾、插板、弹匣袋、挂包、护膝、武器等独立 Mesh）按规划的法向或轴向向量向外平移展开；
-- **连续蒙皮防破皮约束**：连续蒙皮本体（身体、四肢躯干）绝对不做骨骼位移拉扯，从原理上消除蒙皮面条状拉伸变形与破皮空洞。
+## 4. 状态与七个构建 pass
 
-> **【已确认 2026-09-27：模型分解视图呈现方案（结论翻转）】**
-> - **采纳方案（全局统一，翻转为静态 T-pose 分解陈列）**：采用【静态 T-pose 部件分解陈列】方案。触发分解时动画平滑暂停、模型归位标准姿态，独立装具（头巾/插板/弹匣袋/挂包/护膝/武器等）按规划向量向外平移展开，复位后恢复动画；连续蒙皮本体不做骨骼位移拉扯（避免蒙皮面条状破皮）。
-> - **原推荐方案（骨骼位移驱动，未采纳）**：为骨骼应用临时径向位置偏移驱动分解。经论证，单体连续蒙皮网格在骨骼位移拉扯下会产生严重的面条状畸变与破皮破坏，无法达到工业级资产展示要求，故推翻否决。
-> - *确认依据*：2026-09-27 用户决策，全局统一采用 `05-demo-integration.md` 方案 B。
+初始化必须先于 intake 标记；每次 start/resume/correction 都执行 next：
 
-#### 4) 性能预算总表（全项目唯一权威）
+```powershell
+$Id = 'militia' # swat / ak47 / m4
+$W = Join-Path $Run "hero-$Id"
+$State = Join-Path $W ".img2threejs/state.json"
+$Spec = Join-Path $Repo "docs/model-optimization/specs/$Id.json"
+$Reference = Join-Path $Repo 'assets/concepts/militia-v3.png'
+New-Item -ItemType Directory -Path $W -Force | Out-Null
+# 正式run仅首次初始化；恢复时不得覆盖state
+Invoke-Forge 'state.py' @('init','--state',$State,'--reference',$Reference,'--profile','animated-character','--spec',$Spec,'--max-per-pass','3','--max-total','6')
+Invoke-Forge 'next.py' @('--state',$State,$Spec)
+```
 
-以下预算为全项目统一口径，`00-master-plan.md` 与 `03/04/05/06` 各篇一律引用本节，不得另行定义冲突数值：
+武器用 `generic`，参考/ID 同步更改。所有 state/next/mark 都显式 `--state $State`，base FINAL 脚本使用 `--workspace $W`；后者源码固定读取 `$W/.img2threejs/state.json`，不能在 `$W/state.json` 留一个第二副本或让脚本读仓库旧 state。init 不使用不存在的 `--workspace/--input` 参数。
 
-| 统计范围 | 三角面上限 | 说明 |
+### 4.1 人类阶段与真实机器 ID（首次 spec 校验前规范化）
+
+| 阶段名 | `buildPasses[].id` / review `passId` |
+|---|---|
+| blockout | `blockout` |
+| structure | `structural-pass` |
+| form | `form-refinement` |
+| material | `material-pass` |
+| lighting | `lighting-pass` |
+| interaction | `interaction-pass` |
+| optimization | `optimization-pass` |
+
+本机 character starter 的中间阶段是 `proportion-lock` / `feature-placement`，generic 默认还包含 `surface-pass`。项目不是把中文简写直接传给 next：在首次 review 前，将 starter 的 `buildPasses`、`sculptPipeline.passOrder`、review/screenshot pass 列表与所有 feature `passIds` 一起规范化为上表；比例锁定纳入 structure，眼部/局部放置纳入 form，surface 工作分入 form/material，不能丢掉验收内容。保留真实组件引用，不复制通用 hair/nose 目标覆盖遮挡人物的身份目标。
+
+- starter 的 `targetId` 来自显示名 slug，须规范化为 `$Id`，显示名不决定路径。`assessment.json` 中实际字段是 `preSpecAssessment.anatomy`，不是根 `anatomy`。
+- `profile=animated-character` 是 checklist 选择；`--character` 是建模轨道；`objectClass.primaryDomain` 是观察分类。`--domain` 仅按实际解析的插件域处理 augmentation，不代替前三者或自动生成 rig。character 的 domain 声明未提供 augmentation producer 时显式不适用；不把缺文件伪造成成功。
+- 模板默认评分 0.7、critical 0.8、预算 250k/160 calls 等**不是项目授权**。按本篇 8/9 节落实 spec 支持字段与 recipe 分范围预算/质量要求；P-SPEC 拒绝冲突默认值，实际分数仍待图片评审。native optimization 不强制视觉证据，项目仍按下方七 pass 规则验收。
+- M0 fixture 必须证明七个 ID 均被识别、漏图/错 feature 引用/旧阈值/超预算/过期 continue 均不能准出，不修改外部 orchestrator 来适配规划。
+
+### 4.2 FINAL 与正式 rig 的衔接
+
+next 中通用 `generate_threejs_factory.py → src/createObjectModel.ts` 与缺失的 runtime exporter 是上游默认 producer 建议，不是本项目 JS 工厂/导出器已经存在。M0 建受管的 **step→实际producer/CLI/schema/证据** 映射：保留原 checklist ID/顺序，build-current-pass 的证据必须是本轮真实 JS 候选构建及捕获，不能生成一次通用 TS 后谎称英雄已建好。action-ready 按锁定契约验证真实 pivot/socket/分件与 runtime 元数据，不写一个 true 标记代替功能。
+
+`check_part_coverage.py` 需要 runtime manifest 的 `parts` 数组（含name/kind/module/triangles等），不是工厂的 PartRecord 字典。exporter 必须按其真实schema派生单向dump，并把每条记录映射到可见 geometry range/instance；合批语义代理没有真实渲染映射不得计为存在，重复别名/缺件不得靠补同名空记录过关。保留原生输出，项目另测pick/分解/coverage；不使用 `--warn-only` 消掉错误。
+
+base FINAL 依次为 `part-coverage` → `action-ready` → `emission-target` → `plugin-gates`，之后才派发 domain rig 九步。自有 JS 工厂/导出器不选择插件 emission target；内部验证 GLB 也不等于选了该 target。
+
+1. 真实 part coverage/action-ready 完成后，next 到 `emission-target` 时，使用 `state.py mark emission-target --state $State --status skipped --reason <具体理由>` 记录“不选插件 emission target，使用受管项目工厂”的具体依据。无 `--target` 的 emit_target 是 no-op 且不会完成该 state，不能反复执行期待解锁。
+2. next 到 `plugin-gates` 时，以 `--workspace $W` 运行终态 sweep 并保留原始 JSON/退出码，再据真实结果标该步。此时未开始 rig 的 character provider 可能不参与，空报告只说明这次无参与 provider，不算 G1～G12 通过。若出现参与 provider/错误，按其真实数据处置，不能统一跳过。
+3. next 派发正式 rig 九步后，最后显式 `gate_rigging.py --payload "$W/rig-gate-payload.json"`。若追加终态 sweep，受管 producer 先将同 hash 的派生 payload 放到本资产 `$W/.img2/artifacts/character/rig-gate-payload.json`，记录来源；这不是第二作者源。Windows 下终态 sweep 若因其子进程写死 python3 失败，按 01 篇报告/适配，不借另一份旧 state 解锁。
+
+M0 验证上述路径、跳过原因、空报告与正式门禁的区别；任何越序 mark/缺核心 producer 都不能形成交付 PASS。
+
+### 4.3 逐 pass 与失效处理
+
+- 按 next 与锁定版 profile checklist 执行及 mark；`--evidence` 指真实文件，skipped 附 reason。不能手改 state 为 complete、伪造 step 或凭一张截图把整条链 mark done。
+- 七个 pass 是 blockout → structure → form → material → lighting → interaction → optimization；只有当前解锁 pass 可继续。前三个先确定形体，material 中含真 PNG，lighting/interaction/optimization 不默默省略。
+- 每个 pass（包括 optimization）必有 render + 原图 matched-view comparison + 内部特征核对 + 当次 reviewHistory。schema 中的 review 由真实判断写入，不使用示例 `--fidelity 0.88` 自动签字。
+- 单 pass 最多 3 次修正、全程最多 6 次；达到上限/平台期/重复缺陷是**停止修正**，不是通过。退回最佳候选仅操作本轮拥有文件，保留差异和停止原因，不执行整仓 git revert/reset。
+- 原生 completed_passes 会采信同 pass 任意历史 continue，不验证依赖哈希。M0 项目适配必须阻断过期证据，保留原始历史/所有修正计数，并用已验证的 state/ledger 更新流程使相应 pass 与下游重新待验；不删除历史、重 init 清次数或让原生 complete 抵消项目 stale/FAIL。该失效/恢复流程未证明可执行即阻断 M0。
+
+## 5. Intake、相机、去光照与投影
+
+### 5.1 工具能力边界
+
+| 入口 | 实际能力 | 不能宣称 |
 |---|---|---|
-| 角色本体（连续蒙皮网格：皮肤 + 基础服装） | ≤ 15,000 | 不含独立装具与武器 |
-| 独立装具（头巾/头盔/胸挂/护膝/弹匣袋等分离 Mesh） | ≤ 7,000 | 参与静态 T-pose 分解陈列的部件 |
-| 随附武器（Phase 1 一体化展示版 AK-47 / M4A1） | ≤ 6,000 | 挂 `socket_right_hand`，不参与蒙皮 |
-| **角色完整合计**（本体 + 装具 + 随附武器） | **≤ 28,000** | 人物 demo 页主体 |
-| **人物 demo 页总量**（角色完整 + 展台 + 光环 + 网格辅助） | **≤ 30,000** | `05-demo-integration.md` 步骤 9 口径 |
-| Phase 2 武器单体（武器专属 demo 页） | AK-47 ≤ 15,000；M4A1 ≤ 18,000；网格 ≤ 80 | 仅 `demo-ak47.html` / `demo-m4.html` |
+| probe_image | 图像尺寸/格式技术探测 | 已看清身份特征 |
+| build_detail_inventory | 裁剪区域、创建待填存根 | 自动语义分解完整 |
+| extract_landmarks | 通用比例引导与待填 anatomy | 自动实测14个关节 |
+| solve_camera_pose | 初始 referenceCamera 猜测 | 单图严格焦距/6DoF 标定 |
+| delight_albedo | 低频亮度近似归一化 | 完全剥离原光照或真实 albedo |
+| bake_projected_texture | 投影/UV 描述符 | 已栅格化并写出 PNG |
 
-- **骨骼预算**：主体人形骨架 ≤ 32 根（不含手指骨，手部为固定握持姿态）；次级动态骨骼（头巾/弹匣袋等）≤ 12 根；demo 页骨骼总数 ≤ 44 根。
-- **其余预算**：Draw Calls ≤ 16（demo 页）；材质数 ≤ 5；人物 albedo 单张 ≤ 2048×2048；运行时显存 ≤ 120 MB。
+图像是双图复合布局：先独立裁剪/前景 mask、标注 bbox/foot line/side identity，再做每视图工具与匹配。复合图全宽不能当每视角分辨率；不设置裁剪后短边必须 ≥1024 这种无法满足的门槛。
 
----
+相机先拟合 bbox/比例/投影模型，再材质；正交或透视由观察与叠图残差选。记录目标像素、裁剪 offset、相机 aspect/FOV或ortho extent、transform、参考姿态和 residual；不把 yaw=90 直接当已经拟合。
 
-### 3.5 质量门体系（Quality Gates）与执行口径
+去光照每张 crop 独立输出到工作区 `delight/`，保留原图与差分。参数是待视觉调整的初值，无虚构 confidence 字段/阈值；脸/棋盘格/藏青布料不可被归一化抹掉。
 
-为防止低劣或静默失效模型流出，建立分级门禁体系，涵盖 Stage 3/4 静态造型与 Stage 5 动态 Rig。
+### 5.2 已核验命令形式
 
-#### 1) 质量门禁清单（三级判定性质）
-
-门禁判定性质分为三级（2026-09-27 统一口径，全项目以此为准）：
-- **Blocking（离线阻断门）**：有离线 producer、可从 `rig-gate-payload.json` 静态判定，必须 `PASS`，不接受 `unevaluated`；任一 `FAIL` 即阻断交付。
-- **采样门（非阻断）**：G1/G2/G3/G10 需宿主浏览器运行时采样，缺少离线 producer。Phase 1 由 demo 页轻量监控采集数据填充 payload：采到数据 → 如实记录实测数值与 verdict；缺数据 → 记 `status: "unevaluated"` 并注明原因，**不算通过、不阻断交付**，严禁伪造 `pass`。其中 G1（防静默死亡）以 demo 页自检（剪辑存在性 + 播放时顶点位移监控，见 `05-demo-integration.md` 步骤 8）为必检证据，该自检本身属 demo 页验收的 Blocking 项。
-- **Advisory（建议门）**：记录结果、提示风险，不阻断交付。
-
-> 门禁编号说明：G1~G10 为 `img2-character` 插件原生 R6 门禁；G11（Mesh Parity，`rig_mesh_parity.py`）与 G12（Rig Reference，`glb_rig_reference.py`）为本项目纳入的扩展门禁，合称 12 项。本项目骨架的权威 joint order 为 `js/hero_models/common-rig.js` 中的程序化 Humanoid 骨骼字典（对齐 UniRig 命名，见 `00-master-plan.md` 决策记录 1），不引入外部 GLB 参考骨架。
-
-| 阶段 | 门禁 ID | 检查工具 / 脚本 | 判定性质 | 判定通过标准（Pass Criterion） | 防范的核心缺陷 |
-|---|---|---|---|---|---|
-| **造型** | M-TURNTABLE | `stage4_review/turntable_gate.py` | **Blocking** | 4 视角无非预期背景内包空洞，轮廓面积无塌陷 | 贴纸式扁平化、穿脑破洞、悬空零件 |
-| **造型** | M-INTERSECT | `stage4_review/self_intersection.py` | **Blocking** | 自相交体积比率低于 0.5% 阈值 | 肢体严重自穿模、枪械插入胸腔 |
-| **造型** | M-ANCHOR | `stage4_review/attachment_anchor.py` | **Blocking** | 挂件（胸挂/枪/头巾）锚定偏移 ≤ 0.005H | 武器脱手、装备浮空漂移 |
-| **造型** | M-VLM | `stage4_review/vlm_gate.py` | Advisory | 视觉保真度打分 Fidelity ≥ 0.85 | 关键身份特征漏损、服装配色严重失真 |
-| **造型** | M-MATERIAL | `stage4_review/material_gate.py` | Advisory | PBR 参数完全落在对应材质先验区间内 | 塑料感发亮、金属布料粗糙度颠倒 |
-| **骨骼** | **G1** | `stage5_rig/rig_gates.py` | 采样门（非阻断） | `maxSampledBindingDelta <= 2⁻²³`，覆盖 ≥5 采样点 × 全部剪辑；demo 页自检（剪辑存在性 + 顶点位移）为必检证据 | **静默失效（Clip 存在但完全不驱动网格）** |
-| **骨骼** | **G2** | `stage5_rig/rig_gates.py` | 采样门（非阻断） | `applyBoneTransform` ≥64 顶点/网格/帧，全部有限值 | 权重含 NaN/Inf、骨骼索引越界崩溃 |
-| **骨骼** | **G3** | `stage5_rig/rig_gates.py` | 采样门（非阻断） | `stop()` 停止动作后 `maxBindRestoreDelta <= 1e-12` | 动作播放完毕后姿态残留/变形污染 |
-| **骨骼** | **G4** | `stage5_rig/rig_gates.py` | **Blocking** | 蒙皮权重归一化 `\|1 - sum(w)\| <= 2e-7`（所有顶点） | 肢体运动时异常膨胀或缩水坍塌 |
-| **骨骼** | **G5** | `stage5_rig/rig_gates.py` | **Blocking** | `maxSkinIndex <= 骨骼数 - 1` | 顶点索引溢出飞向无穷远 |
-| **骨骼** | **G6** | `stage5_rig/rig_gates.py` | **Blocking** | `skinRequiredMeshCount == visibleSkinnedMeshCount`（仅统计 spec 声明 `skinning: "required"` 的网格，刚性挂载件不计入，见表下说明） | 部件遗漏未绑定（如头巾/靴子脱离身体） |
-| **骨骼** | **G7** | `stage5_rig/rig_gates.py` | **Blocking** | `leftAnchor.x > 0 > rightAnchor.x`（解剖中轴） | 骨架左右镜像反向绑定 |
-| **骨骼** | **G8** | `stage5_rig/rig_gates.py` | **Blocking** | 支撑相脚底滑移 `footSlide <= 0.01H` | 角色行走动作严重滑步溜冰 |
-| **骨骼** | **G9** | `stage5_rig/rig_gates.py` | **Blocking** | `scaleDelta == 0`（除非模型源显式声明） | 关节缩放破坏 Stage R2 权重混合 |
-| **骨骼** | **G10** | `stage5_rig/rig_gates.py` | 采样门（非阻断） | 176 帧全空间扫描，破面与折痕独立统计上报 | 剧烈肢体动作下蒙皮开裂与背景穿透 |
-| **骨骼** | **G11** | `stage5_rig/rig_gates.py` | **Blocking** | 冻结几何缓冲区在绑定前后逐字节完全一致 | Rig 过程非法擅自重写底层几何网格 |
-| **骨骼** | **G12** | `stage5_rig/rig_gates.py` | **Blocking** | 动作通道寻址指向合法的参考骨骼层级 | 剪辑通道与实际骨架不对应导致错位 |
-
-> **G6 统计范围说明**：G6 计数仅覆盖 spec 中声明 `skinning: "required"` 的网格（连续蒙皮本体及需蒙皮的衣物层）。刚性挂载件——随附武器（挂 `socket_right_hand`）与声明 `skinning: "none"` 的独立装具——**不计入** `visibleMeshCount` 分母，改为按 spec 刚性部件清单逐件核对存在性与父子挂接关系，缺件或脱挂即 `FAIL`。
-
-#### 2) 评审循环（Correction Loop）执行口径与终止策略
-依据 `stage4_review/correction_loop.py` 的有界停机状态机，严格控制迭代成本：
-- **循环次数硬约束**：单个 Pass 内部修复最多迭代 **3 轮**（`max_per_pass = 3`），全流程累计修复最多 **6 轮**（`max_total = 6`）；
-- **终止触发条件（优先序）**：
-  1. **达标退出（Target Reached）**：保真度得分 `Fidelity ≥ 0.85` 且所有 Blocking 门禁 100% Pass；
-  2. **平台期退出（Plateau Stop）**：连续 2 轮迭代得分提升 `Delta < 0.02`，且无未解决的 Blocking 阻断门；
-  3. **硬天花板停机（Hard Ceiling）**：当前轮次达到单 pass 3 次或总计 6 次上限，强制停止自动迭代，转入人工评估；
-  4. **负收益回退（Auto Revert）**：若某轮修正导致得分下降，必须自动 Revert 本轮修改，保留上一轮最优代码。
-
-#### 3) 证据留存格式与命名
-每次评审与门禁判定必须完整留存可追溯证据：
-- 渲染原图：归档于 `.img2threejs/hero-<who>/shots/`；
-- 对比表：`shots/comparison-round-<N>.png`（由参考图正/侧、当前渲染正/侧拼接）；
-- 评审 JSON 记录：存放于 `.img2threejs/hero-<who>/review-round-<N>.json`，包含轮次、评分、缺陷标签、门禁 verdict 结果。
-
----
-
-### 3.6 纹理产物管理与可复现性
-
-#### 1) 纹理生成流水线
-纹理生成采用纯确定性的投影烘焙流水线，全过程由脚本调度：
-1. **去光照（De-lighting）**：
-   ```bash
-   python3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage1_intake/delight_albedo.py" \
-     assets/concepts/<who>-v1.png \
-     --out .img2threejs/hero-<who>/delight-front.png \
-     --strength 0.85 \
-     --report .img2threejs/hero-<who>/delight-report.json || \
-   py -3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage1_intake/delight_albedo.py" \
-     assets/concepts/<who>-v1.png \
-     --out .img2threejs/hero-<who>/delight-front.png \
-     --strength 0.85 \
-     --report .img2threejs/hero-<who>/delight-report.json
-   ```
-2. **投影解算（Camera Pose Fitting）**：
-   ```bash
-   python3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage1_intake/solve_camera_pose.py" \
-     assets/concepts/<who>-v1.png \
-     --out .img2threejs/hero-<who>/camera-front.json || \
-   py -3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage1_intake/solve_camera_pose.py" \
-     assets/concepts/<who>-v1.png \
-     --out .img2threejs/hero-<who>/camera-front.json
-   ```
-3. **生成烘焙描述符**：
-   ```bash
-   python3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage3_build/bake_projected_texture.py" \
-     --reference-image assets/concepts/<who>-v1.png \
-     --delit-image .img2threejs/hero-<who>/delight-front.png \
-     --camera .img2threejs/hero-<who>/camera-front.json \
-     --unseen-strategy mirror-symmetry \
-     --texture-size 1024 > .img2threejs/hero-<who>/bake-descriptor.json || \
-   py -3 "C:/Users/developer/.agents/skills/img2threejs/forge/stage3_build/bake_projected_texture.py" \
-     --reference-image assets/concepts/<who>-v1.png \
-     --delit-image .img2threejs/hero-<who>/delight-front.png \
-     --camera .img2threejs/hero-<who>/camera-front.json \
-     --unseen-strategy mirror-symmetry \
-     --texture-size 1024 > .img2threejs/hero-<who>/bake-descriptor.json
-   ```
-
-#### 2) PNG 产物免手改准则（No Manual Edits）
-- `assets/textures/hero/*.png` 属于**编译生成的衍生二进制资产**；
-- **严禁手工进入图像处理软件进行修图**。任何颜色、接缝、亮度的不协调，必须通过调整 `delight_albedo.py` 的 `--strength` / `--blur-radius` 或重算相机投影矩阵来解决；
-- 重新运行烘焙命令必须保证**无缝幂等覆盖**原 PNG，保证全流水线 100% 可代码化重现。
-
-> **【已确认 2026-09-27：投影烘焙执行器实现方案】**
-> - **执行方案（方案 A，采纳推荐）**：采用并复用项目现有的无头 Chrome 基础设施（`chrome.exe --headless --dump-dom`）加载专用烘焙 Runner 页（`bake-runner.html`），在浏览器原生 WebGL 环境中渲染相机投影 ShaderMaterial 并导出 PNG，不引入额外 Python 原生图像扩展；
-> - **备选方案（方案 B，备选，未采纳）**：编写纯 Python 离线 UV 投影烘焙脚本（需在 Python 环境额外安装 `numpy`, `pillow`, `scipy`）。
-> - *采纳理由*：方案 A 沿用项目已验证的 Chrome 无头自动化链路，不增加 Python 原生扩展包依赖与环境维护成本。
-
----
-
-### 3.7 评审记录与 Rig 报告文档模板
-
-评审记录与 Rig 验证报告统一存放在 `docs/model-optimization/` 下的子目录中，格式标准化。
-
-- **评审记录存放路径**：`docs/model-optimization/reviews/<who>-review-pass<N>.md`
-- **Rig 报告存放路径**：`docs/model-optimization/rig-reports/<who>-rig-report.md`
-
-#### 模板 1：模型评审记录模板（`<who>-review-pass<N>.md`）
-```markdown
-# 模型评审记录 · <模型名称> (Pass <N>)
-
-- **评审日期**：YYYY-MM-DD
-- **评估对象**：`.img2threejs/hero-<who>/spec.json` & `js/hero_models/<who>.js`
-- **当前迭代轮次**：第 N 轮 / 单 Pass 上限 3 轮 / 累计上限 6 轮
-- **评审状态**：[PASS / NEED_REVISION / CEILING_STOP]
-
-## 1. 视觉评估与门禁判定
-| 门禁项 | 类型 | 判定标准 | 实测结果 | 结论 |
-|---|---|---|---|---|
-| M-TURNTABLE | Blocking | 4 视角无内包背景洞 | 空洞像素数: 0 | PASS |
-| M-INTERSECT | Blocking | 自穿插比率 < 0.5% | 穿插体积比: 0.12% | PASS |
-| M-ANCHOR    | Blocking | 锚点偏移 ≤ 0.005H | 最大位移: 0.002H | PASS |
-| M-VLM       | Advisory | 保真度得分 ≥ 0.85 | 得分: 0.88 | PASS |
-| M-MATERIAL  | Advisory | PBR 区间符合先验 | 粗糙度/金属度正常 | PASS |
-
-## 2. 四视角渲染对比图
-- **正面 (0°)**: `shots/round-<N>-front.png`
-- **右侧 (90°)**: `shots/round-<N>-right.png`
-- **背面 (180°)**: `shots/round-<N>-back.png`
-- **左侧 (270°)**: `shots/round-<N>-left.png`
-- **对比表**: `shots/comparison-round-<N>.png`
-
-## 3. 关键身份特征核对表（Feature Review Targets）
-- [x] 特征 1（如格纹头巾）：纹理清晰度达标，边缘贴合面部
-- [x] 特征 2（如左臂红袖章）：正负半轴方向正确（-X 侧）
-- [ ] 特征 3（如胸挂弹匣袋）：[记录具体偏离或合格情况]
-
-## 4. 改进措施与下步决策
-- **发现缺陷**：[列出具体 Defect Tags]
-- **处置方案**：[修改 Spec 对应字段或调整投影矩阵]
+```powershell
+# 文件路径在前一步实际创建并核验；相机数值由匹配结果决定
+$Crop = Join-Path $W 'crops/front.png'
+Invoke-Forge 'stage1_intake/solve_camera_pose.py' @($Crop,'--out',"$W/cameras/front.json")
+Invoke-Forge 'stage1_intake/delight_albedo.py' @($Crop,'--out',"$W/delight/front.png",'--report',"$W/delight/front-report.json",'--strength','0.60')
+Invoke-Forge 'stage3_build/bake_projected_texture.py' @('--reference-image',$Crop,'--delit-image',"$W/delight/front.png",'--camera',"$W/cameras/front.json",'--mesh-id','body','--texture-size','2048','--unseen-strategy','palette-continue','--out',"$W/bake/front-descriptor.json")
 ```
 
-#### 模板 2：Rig 骨骼与动画报告模板（`<who>-rig-report.md`）
-```markdown
-# Rig 骨骼与动画验证报告 · <模型名称>
+`body` 只是例示 ID；正式 descriptor 必须指向导出 manifest 中真实 mesh ID，并对其他目标分别覆盖。使用 `--out`，不用 PowerShell `>` 写 JSON 导致编码或错误文本混入。
 
-- **评估日期**：YYYY-MM-DD
-- **模型文件**：`js/hero_models/<who>.js`
-- **综合判定**：[ALL_PASS / BLOCKED]
+### 5.3 浏览器像素执行器（M0新增项目实现）
 
-## 1. Stage R6 门禁判定汇总表（G1 ~ G12）
-| 门禁 ID | 门禁名称 | 判定性质 | 阈值标准 | 实际测得数据 | Verdict |
-|---|---|---|---|---|---|
-| G1 | Binding Reaches Node | 采样门（非阻断） | maxDelta ≤ 2⁻²³ (≥5 samples) | delta: 1.1e-16 (samples: 15，demo 页轻量监控实测) | PASS |
-| G2 | Deformation Finite   | 采样门（非阻断） | applyBoneTransform 有限值 | NaN 计数: 0, 顶点数: 256（demo 页轻量监控实测) | PASS |
-| G3 | Bind Restore        | 采样门（非阻断） | stop() 后 delta ≤ 1e-12 | delta: 0.0（demo 页轻量监控实测) | PASS |
-| G4 | Weights Normalised  | Blocking | \|1 - sum(w)\| ≤ 2e-7 | 最大偏差: 4.2e-8 | PASS |
-| G5 | Indices in Range    | Blocking | maxIndex ≤ bones - 1 | maxIndex: 18, 骨骼数: 19 | PASS |
-| G6 | Every Mesh Bound    | Blocking | visibleMesh == skinnedMesh | 5 == 5 | PASS |
-| G7 | Medial / Lateral    | Blocking | left.x > 0 > right.x | 左右中轴正常 | PASS |
-| G8 | Foot Contact        | Blocking | footSlide ≤ 0.01H (stance) | 最大滑移: 0.004H | PASS |
-| G9 | No Joint Scale      | Blocking | scaleDelta == 0 | 0 (无非法缩放) | PASS |
-| G10| Skin Integrity Sweep| 采样门（非阻断） | 176 帧破面与折痕扫描 | 破面: 0, 折痕: 12 | PASS |
-| G11| Mesh Parity         | Blocking | 冻结几何字节级一致 | byte-identical | PASS |
-| G12| Rig Reference       | Blocking | 骨骼层级映射合法 | 完全对齐 common-rig.js 骨骼字典 | PASS |
+descriptor → 源图加载/解码 → 匹配 referencePose → 源相机 depth/semantic mask → UV-space 渲染 → 可见性加权融合 → 未见区补全 → UV island padding/mipmap → readPixels → runner 保存 PNG → 工厂加载并复验。
 
-## 2. 剪辑动力学测量表
-| 剪辑名称 | 帧率/时长 | 循环判定 (poseReturn ≤ 0.5°) | 步幅位移 | 状态 |
-|---|---|---|---|---|
-| idle | 30fps / 2.0s | 0.12° (PASS) | 0.00H | VALID |
-| walk | 30fps / 1.2s | 0.28° (PASS) | 0.95H | VALID |
-| aim  | 30fps / 1.0s | 0.05° (PASS) | 0.00H | VALID |
+- 权重只给前景、位于视锥内、朝向合适且通过深度遮挡的同一部件，拒绝手/枪/背景投到胸挂或躯干。前后不因朝向相近而互相透写。
+- 正侧各独立 mask、裁剪和相机；重叠带按置信度/法线/遮挡融合。非对称臂章不 mirror。背面未知区域标 inference；不得拉伸前脸/前胸覆盖整面。
+- 图集唯一 UV、合理 texel density、无意外 UV overlap、岛间 padding；检查色彩转换、readPixels 下上行、Texture.flipY，避免图像倒置或 double gamma。
+- 主色 PNG 作为 sRGB；normal/roughness/metalness 等数据图不设 sRGB。完整 albedo 不再乘一次深色 `material.color`（通常白色），否则双重压黑。
+- 单张 albedo不代表单材质/单 draw call：布/皮肤/金属仍按参数分区。粗糙度、金属度可标量或受管数据遮罩，织物/皮肤/木/聚合物为非金属。
+- 最终 PNG 是衍生产物，不手涂；隐区程序化补全须记录区域/种子/置信度，不取代可见高辨识纹样的原画投影。
+- descriptor、UV/geometry/source/camera/recipe/执行器哈希入 manifest。重复烘焙原子写入成功后才替换正式 PNG；GPU差异用声明的像素容差验证，不假诺跨驱动字节绝对一致。
 
-## 3. 验收结论
-所有离线阻断门（G4~G9、G11、G12）全部 PASS；采样门 G1/G2/G3/G10 均已实测记录（或附原因的 unevaluated）；模型动画运行时无撕裂、无静默动作失效。
-```
+## 6. Rig 来源、冻结、绑定和动作
 
-> **【已确认 2026-09-27：文档归档组织方式】**
-> - **执行方案（方案 A，采纳推荐）**：采用分目录管理规范（`docs/model-optimization/reviews/<who>-review-pass<N>.md` 与 `docs/model-optimization/rig-reports/<who>-rig-report.md`），随着 Pass 增加保持项目结构清晰；
-> - **备选方案（方案 B，备选，未采纳）**：扁平化集中存放在 `docs/model-optimization/` 根目录下（如 `<who>-review.md` 与 `<who>-rig.md`）。
-> - *采纳理由*：方案 A 结构清晰规范，便于多轮迭代与多模型并行时的文档检索与长期维护。
+执行D-01于2026-10-01由用户确认的内部GLB验证路线；不引入外部模型，不把demo改成GLB加载。授权已确认不代表导出/读取样例或门禁已经通过。原生 checklist 以 `img2-character/domain.json` 为准；原生工具在该插件 `tools/`，不能从插件 cwd 调用 base 的 `forge/` 目录。
 
----
+1. 验证GLB须含本次骨架与待交付剪辑：先在spec/recipe完成可导出的骨架/剪辑定义，必要的序列化 skin 只在隔离临时实例生成（不修改正式待冻结缓冲区），再导出并读取以确定真实索引。绑定后调整clip时重新导出/读取并重采样关联证据，不沿用旧GLB报告；geometry/UV不变时不重freeze。自生成 GLB 经 `rig_glb_reference.py` 读取，选择正确 skin；关节按**真实 skin.joints**，技术节点不能混入 joint index。构建全部节点→父子→root→更新 world matrix→Skeleton。工厂与派生 rig-data 使用实际 joint 映射，不按名字或遍历顺序重排。
+2. 先完成 geometry repair，再 freeze position/normal/UV/index/material-group 及 mesh-local transforms（项目扩展）；skinIndex/skinWeight/skeleton 是允许新增属性。所有权重 producer 的输入输出 shape 在 M0 验证，不能把 sculpt spec 直接当 rig payload。
+3. 在规范 bind-local 空间执行 attached identity 绑定（正式 mesh 在绑定时 identity，非 identity mesh-local 预先规范化并冻结），逆绑定从真实 bind 矩阵导出/核对；绑定后不因添加 display wrapper 重新 calculateInverses。display wrapper 与 turntable 不进入作者骨架或 clip root motion。M0 必测绑定后添加 wrapper 旋转/平移仍与规范空间采样一致。
+4. 测地线/conditioning 仅作用需蒙皮网格；刚性装备与武器 parent 到骨节点。每个断开的实体须有明确 seeds/允许骨集合，防止胸部和手臂相邻串扰。两侧对应网格不能全套一个 nearest-bone 标签冒充 geodesic。
+5. clip 提交前采样并量化：idle 呼吸；walk 为**原地巡回步态+虚拟行进距离**，支撑相用恢复的前进位移换算到 locomotion 空间再测 footSlide；aim 为进入后保持的姿态，只有呼吸/微动回环才叫循环。
+6. 双手持枪时 walk 不反向大幅摆臂；右手主挂载，副手按每个 clip 维持托举误差，枪托在 aim 时贴肩。无须本期新增通用 IK，但不能只固定枪到一只手就忽略另一只手。
+7. bind restore 在显式 reset/stop 验证与模式切换中完成，不在正常 tick 里每帧覆盖动画。play/stop/seek/advance 的语义、动作时间与冻结时间必须可控。
+8. 绑定后再次导出冻结缓冲区逐字节 parity；几何若确需改，退回构建/修复阶段使旧下游证据失效，不用重新 freeze 遮掩失败。
 
-### 3.8 Git 提交粒度与 Commit Message 规范
+## 7. 门禁分层：原生事实和项目准出分开
 
-为保证工程历史清晰可追溯，禁止“大乱炖式”一次性提交数千行代码与贴图。每个模型必须按流水线阶段进行**原子化提交**：
+原生 `gate_rigging.py --payload` 有 **12** 行 G1～G12；旧参考文件写 G1～G10 不代表当前只有十门。其包装 verdict 是 pass/fail/error；缺测行 `unevaluated` 可导致包装 error/退出2，不能用 exit0 判断不存在的问题。
 
-```text
-阶段 1: feat(spec): 完成 <who> 英雄版重建规格定义 spec.json
-阶段 2: feat(texture): 烘焙生成 <who> 正/侧投影贴图与去光照反照率
-阶段 3: feat(model): 实现 <who> 英雄版高精网格构建工厂 js/hero_models/<who>.js
-阶段 4: test(review): 记录 <who> 造型评审证据与四视角对比表
-阶段 5: feat(rig): 完成 <who> 骨骼绑定与命名动画剪辑 (idle, walk, aim)
-阶段 6: test(rig-gates): 运行 Stage R6 G1-G12 自动化门禁测试并生成报告
-阶段 7: chore(demo): 集成 <who> 英雄版至 demo 展示页并升级 PBR 渲染栈
-```
-
-#### Commit Message 格式规范
-```text
-<type>(<scope>): <subject>
-
-[可选 body：说明变更原因、涉及的具体门禁或 Spec 编号]
-[可选 footer：关联的验收或确认项]
-```
-- **Type 约束**：`feat`（新功能/新模型）、`fix`（缺陷修复）、`test`（门禁测试/评审数据归档）、`chore`（页面接入/工具链脚本更新）、`docs`（规划与实施文档）。
-- **Scope 约束**：`spec`、`texture`、`hero-militia`、`hero-swat`、`rig`、`demo`。
-
----
-
-## 4. 产出物清单
-
-当任何英雄版模型执行本流水线时，必须产出且仅产出以下清单文件：
-
-| 类别 | 相对文件路径 | 责任方 / 工具 |
+| 原生项 | 输入/真实含义 | 项目处置 |
 |---|---|---|
-| **配置状态** | `.img2threejs/hero-<who>/state.json` | `forge/state.py` |
-| **规格定义** | `.img2threejs/hero-<who>/spec.json` | `stage2_spec/new_sculpt_spec.py` |
-| **纹理资产** | `assets/textures/hero/<who>-combined-albedo.png` | 投影烘焙执行器 |
-| **工厂代码** | `js/hero_models/<who>.js` | 模型生成工厂 |
-| **评审记录** | `docs/model-optimization/reviews/<who>-review-pass<N>.md` | 评审人员 / 视觉 Agent |
-| **Rig 报告** | `docs/model-optimization/rig-reports/<who>-rig-report.md` | `stage5_rig/rig_gates.py` |
-| **展示页面** | `demo-<who>.html`（升级版） | Demo 集成开发 |
+| G1 | bindingSamples：各clip至少5个时刻，实际node与track interpolant比较，delta≤2^-23 | 必做 producer；不是“一个顶点移动了” |
+| G2 | deformation：每mesh/frame至少64个顶点有限值 | 各clip实测；小网格另做全顶点项目检查，不伪报64 |
+| G3 | bindRestore：显式stop/reset后差值≤1e-12 | 保留原生结果；项目TRS/顶点恢复检查必做 |
+| G4/G5 | binding：所有顶点权重和误差≤2e-7，合法索引/有限非负权重 | 必须PASS；不能只测最大索引漏掉负/非整数 |
+| G6 | meshVisibility：原生visibleMeshCount == visibleSkinnedMeshCount | 刚体与蒙皮混合需声明统计范围；原始全可见数量另外保留，项目逐件coverage阻断 |
+| G7 | chainAnchors：独立左右证据、rig-local左+X右-X | 缺独立证据不算PASS；不得从x正负生成名字 |
+| G8 | clips[].stance：footSlide≤0.01H | 来自时序接触采样，不是静态/纯离线猜值；还查离地/穿地 |
+| G9 | clips：禁止未声明joint scale | joint scale轨道/采样都检查；呼吸用转动/位移而非骨骼膨胀 |
+| G10 | skinIntegritySweep：各clip×≥4times×2sides×2azimuths与blend-off实测baseline | 三条clip默认最少48帧，非固定176；洞/褶分报，未知baseline不套用别人的数值 |
+| G11 | meshParity：冻结缓冲区绑定前后一致 | 必须PASS，项目补充transform/group范围 |
+| G12 | rigReference：来自GLB自有骨架或usable correspondence | D-01能力样例通过；不以common-rig字典填假glb/correspondence |
 
----
+G6 输入若按 required-skinned subset 适配，报告写明 adapter 与 excluded rigid 列表，不能说所有可见零件都蒙皮了；与原始数量不符的原生 verdict 原样保留。若合法rigid使原生全场景G6 FAIL，则归类为适用范围差异，需明确批准的schema适配例外并保留原FAIL；P-RIG逐件覆盖仍必须PASS。缺件/required网格漏蒙皮等真实FAIL绝不以这条例外放行，scope-adapted通过也不得冒充未经适配的原生全场景ALL_PASS。
 
-## 5. 验收标准
+原生 producer 需测真实运行时并覆盖 roster；手填零差值/足滑、true/bound/coverage 数值均无效。G10只有5姿态的preview不能宣称全扫；48帧是本项目3条clip的**每个 blend 模式**轴最小值，blend-on/off 是配对控制，基础至少48对/96张原始捕获（需要额外分层渲染时另计），不等于足够找完缺陷。G10 payload.frames 按原生所表示的单模式 sweep 轴乘积填写，不能把双模式文件数混成该字段。动作峰值/接触切换另补采样。
 
-实施过程必须逐项通过以下验收检查表（Checklist）：
+G8 producer 从 recipe 的预先声明接触窗口和固定虚拟行进路径取得输入，采实际足骨/足底点并变换到 locomotion-world；不能看完足轨迹再反拟合一个刚好零滑动的速度。walk 两侧每个支撑区间有足够采样、覆盖接触切换；idle/aim 的站立保持区间也由项目检查双足稳定/离地/穿地，不能只拿静止 clip 的 stance 让原生 G8 通过而漏测 walk。
 
-- [ ] **目录与命名合规**：工作区位于 `.img2threejs/hero-<who>/`，工厂代码位于 `js/hero_models/<who>.js`，贴图位于 `assets/textures/hero/`。
-- [ ] **Spec 权威性生效**：所有模型尺寸、材质参数均有 `spec.json` 依据，并通过 `validate_sculpt_spec.py --strict-quality` 验证（返回 `PASS`）。
-- [ ] **代码确定性与规范**：工厂代码为纯 JS ES Module，不包含 `Math.random()`，Three.js 统一由 `importmap` 导入。
-- [ ] **游戏版完全隔离**：`js/soldier_models/` 源码未受任何修改，游戏主程序 `index.html` 运行无报错，`syncMesh` 六元组完整无损。
-- [ ] **门禁阻断策略执行**：M-TURNTABLE、M-INTERSECT、M-ANCHOR 及离线阻断门 G4~G9、G11、G12 均无 `FAIL` 或 `unevaluated`；采样门 G1/G2/G3/G10 均有实测记录或注明原因的 `unevaluated`。
-- [ ] **评审循环收敛**：单 pass 循环不超过 3 轮，全过程不超过 6 轮，终止状态记录完备。
-- [ ] **纹理可复现**：PNG 资产由流水线自动输出，无人工修改痕迹，重跑流程可无缝覆盖。
-- [ ] **文档与记录完整**：按标准化模板在 `docs/model-optimization/` 归档评审记录与 Rig 报告。
-- [ ] **Git 提交原子化**：遵循规范的 Commit Message 前缀与分阶段粒度。
+G6 范围适配/小网格 G2 例外需在 M0 拿实测与替代覆盖提出结论；目前未获例外批准。原始全场景与 scope-adapted 报告分别命名/标范围，ALL_PASS 限未经范围替换且全部十二项 PASS 的报告。
 
----
+**项目阻断检查（必须有事实数据，不受原生 blocking:false 影响）：**
 
-## 6. 风险与回退策略
+| ID | 证据/失败判定 |
+|---|---|
+| P-INPUT | 新run/版本/源/哈希/前景裁剪齐全；默认脚手架不冒实测 |
+| P-SPEC | strict-quality + recipe校验；稳定mesh/part/feature映射完整 |
+| P-FEATURE | 每个critical特征独立对照PASS；形体、内部结构、纹理边界正确 |
+| P-GEOMETRY | 四向+关键近景；无严重非预期孔洞/自穿插/浮件；合法开口与装具搭接有逐对说明 |
+| P-TEXTURE | 真UV烘焙、遮挡mask、双视图与unknown补全可追溯；接缝/色彩正确 |
+| P-RIG | 权重/索引/空间/joint/冻结/rig对应实测正确；全部required mesh绑定；全部rigid正确挂接 |
+| P-ANIMATION | 全部必需clip驱动正确区域；有界有限形变；bind恢复；足接触与双手/贴肩误差≤0.005H（对应适用姿态） |
+| P-UI | explode/restore、wire/restore、clip快速切换和URL组合可复现；无永久时间缩放/资源遗留 |
+| P-RUNTIME | 加载/采样/渲染后成功；任何异步失败为粘性FAIL；404/超时/降级不得DEMO_OK |
+| P-BUDGET | 按8节统计并实测；缺少hardware数据不伪称60FPS或实际GPU显存 |
+| P-ISOLATION | 游戏冻结文件/导入链未变，低模契约与游戏smoke回归正常 |
 
-| 风险场景 | 影响范围 | 触发指征 | 回退 / 应对方案 |
-|---|---|---|---|
-| **Python 依赖执行异常** | 门禁与投影解算不可用 | 运行脚本报错缺少模块或 Python 解释器异常 | 优先使用 `py -3` 回退命令；若仍失败，参照 `01-environment-setup.md` 重新安装或修复 Python 环境。 |
-| **投影纹理在接缝处拉伸拉花** | 模型背面/侧面视觉瑕疵 | 四视角截图评审发现明显拉伸条纹 | 修改 `bake_projected_texture.py` 的 `--unseen-strategy` 为 `palette-continue` 或调整侧面相机俯仰角；严禁手动用画笔涂抹修图。 |
-| **G1 门禁报告静默失效** | 动画有 Clip 但角色模型不动 | G1 判定 `status: fail` 或 `unevaluated` | 检查 `mesh.bind(skeleton, new THREE.Matrix4())` 是否使用了恒等变换；检查 `updateMatrixWorld(true)` 是否在 `Skeleton` 创建前调用。 |
-| **评审循环达到 6 轮硬上限仍未达标** | 开发周期可能失控 | `correction_loop.py` 触发 `HARD_CEILING` | 强制终止自动修正；将当前最佳轮次暂存为候选版本，输出缺陷分析并提交人工复核决定是否降级放行。 |
+原生无数据且非核心的条目只可能形成**带明确理由和影响的待用户批准例外**；已知核心失败、缺核心producer或项目阻断不通过均不能交付。合法刚体的 G6 范围差异仅走前述明确例外流程，不归类为缺数据，不因 D-01 已确认而自动批准。报告区分 `projectVerdict` 与 `nativeVerdict`，仅原生全12项PASS才写 ALL_PASS。
 
----
+静态工具能力不得夸大：self_intersection/attachment/turntable按实际schema输入与测量范围使用，不统一宣称“穿插体积<0.5%”或“脚本0违规=真实无穿模”。实际mesh导出、pair allowlist、关键pose/近景与逐件挂接测试共同补齐覆盖。
 
-## 7. 决策记录（2026-09-27 用户确认）
+## 8. 预算与测量（全项目唯一数值表）
 
-2026-09-27 用户已拍板确认全部技术方案决策，各实施环节严格按以下已确认方案执行：
+| 范围 | 三角面上限 |
+|---|---:|
+| 人物本体（皮肤/基础服装，所有required skinned） | 15,000 |
+| 独立人物装具 | 7,000 |
+| 挂载武器character变体 | 6,000 |
+| 完整人物合计 | 28,000 |
+| 人物demo beauty场景（含台面装饰） | 30,000 |
+| AK-47 showcase | 15,000 |
+| M4A1 showcase | 18,000 |
 
-1. **工厂函数返回签名设计（见 3.3 节）**：【已确认 2026-09-27】
-   - *执行方案（采纳推荐）*：工厂函数统一返回包含几何、骨骼、动画混合器与剪辑的开箱即用对象 `{ group, skinnedMesh, skeleton, mixer, clips, anchors, dispose }`，外部调用端一行代码即可完成挂载与播放；
-   - *备选方案（备选，未采纳）*：工厂函数仅同步返回几何与骨骼 `{ group, skinnedMesh, skeleton }`，动画由外部运行时装配。
-2. **投影烘焙运行时实现途径（见 3.6 节）**：【已确认 2026-09-27】
-   - *执行方案（采纳推荐）*：复用项目成熟的 Chrome Headless WebGL 渲染机制（通过本地服务加载烘焙页面抽取像素写出 PNG），不增加额外 Python 原生图像库；
-   - *备选方案（备选，未采纳）*：采用纯 Python 离线脚本结合 `trimesh` / `pillow` 进行投影栅格化。
-3. **评审记录与 Rig 报告归档目录架构（见 3.7 节）**：【已确认 2026-09-27】
-   - *执行方案（采纳推荐）*：采用专用子目录组织结构：`docs/model-optimization/reviews/<who>-review-pass<N>.md` 与 `docs/model-optimization/rig-reports/<who>-rig-report.md`；
-   - *备选方案（备选，未采纳）*：统一扁平存放在 `docs/model-optimization/` 根目录下。
-4. **模型分解视图（Exploded View）在蒙皮模型上的表现方式（见 3.4 节）**：【已确认 2026-09-27，结论翻转】
-   - *执行方案（全局统一，翻转为静态 T-pose 部件分解陈列）*：静态 T-pose 部件分解陈列。触发分解时动画平滑暂停、模型归位标准姿态，独立装具（头巾/插板/弹匣袋/挂包/护膝/武器等）按规划向量向外平移，复位后恢复动画；连续蒙皮本体不做骨骼位移拉扯，避免蒙皮面条状破皮；
-   - *原建议方案（骨骼位移驱动，未采纳）*：骨骼位移驱动分解——为骨骼应用临时径向位置偏移，同时保持蒙皮形变正常计算（存在连续蒙皮网格拉扯畸变与破皮破坏风险，已否决）。
+主体骨 ≤32、次级动态骨 ≤12、总骨 ≤44；人物/武器英雄材质 ≤5（不含台面/辅助），人物albedo单张2048²；武器showcase语义part ≤80。
+
+- 原有 assembled beauty 主渲染 pass draw-call 目标 ≤16；shadow pass、透明双面、wire overlay、debug/explode **分别统计**，不能拿遍历Mesh数量冒 draw calls，不能把多pass合计与16混用。独立武器通过合并静态几何/InstancedMesh保留可动组，80语义零件不等于80次绘制。
+- 合批方案在 freeze 前落定。assembled 复用合批网格，exploded 使用可追溯的刚体陈列代理/只读片段派生物，切模式时隐藏原合批显示并只呈现一次；不原地拆/改冻结 buffers、拉骨骼或同时渲染重影。蒙皮本体不拆；逐件选择/高亮与完整 TRS 往返须测，回 assembled 原几何/hash不变，陈列临时资源由宿主释放。
+- 区分 submitted triangles（含instance/group/drawRange）与unique geometry triangles，统计范围写明；renderer.info的帧数据必须标reset边界。线框不沿用triangle口径。
+- 120MB 为纹理/geometry/render target估算目标，不称为浏览器测得真实VRAM；mipmap/cubemap/PMREM/shadow均纳入公式，renderer.info.memory只有数量不是字节。
+- 性能目标为受测设备1080p/DPR=1、正常assembled beauty、预热后30s的流畅60FPS；报告硬件/GPU/backend、median/p95 frame time、掉帧率。无指定核显实机测试就只报告当前设备，软件无头结果不当成Iris Xe实测承诺。
+- 若确有draw/材质/面数不足，先合批不删除critical特征；仍需变更时提交具体对比和预算申请，不能静默改数字或交付弱化版。
+
+## 9. 视觉评分、证据与停止
+
+沿用质量目标：AI辅助综合保真≥0.85、每项critical≥0.90；这是**评审要求而非工具已算出的事实**。同时提交分区图、原画对照和缺陷列表，评分人/方法/版本明示。全局高分不救关键特征错误；没有图不能给分；plateau不等于通过。
+
+每次review：run/pass/round、spec/recipe/source/render-profile哈希、actual camera/pose/time、原图crop、四向/内部/特写、工具原始结果、critical/important清单、修正组、前后变化与decision。优先修 camera→silhouette→head/face→clothing→accessory→material→lighting，同轮不混改多类以掩盖根因。
+
+判定用 `continue/refine-spec/refine-code/request-input/stop` 与next一致；终止次数来自reviewHistory而非对话记忆。评分下降只回本轮拥有的更改，保留最优候选和负收益证据。
+
+模板不预填PASS、0洞、0足滑或示例分数。报告空项初始pending；缺测行unevaluated/原因/下步；失败行FAIL/证据/阻断原因。
+
+## 10. 项目工具责任与交付可复现
+
+所有 `scripts/hero/`、`hero-review`、`bake-runner` 都是**下一轮新增并先在M0验收**，不是已存在功能：
+
+- runner：ready/error等待、固定时刻、相机/模式、截图/数据读写、超时、隔离进程与负向测试。
+- export-mesh：实际r160场景buffers、transforms、part IDs、mesh/rigid/skinned分类；二进制字节/hash保真。
+- export-rig-glb：spec代码自产rig的序列化，正确joint/inverse-bind/clip索引与round-trip；禁止加载外部模型替换构建。
+- validate-asset：作者源/派生依赖哈希、spec/recipe schema、模板规范化、过期 review/下游失效、逐件coverage、项目阻断项、原生报告保真与最终机器summary。
+- state/终态适配只在本项目实现，M0 验证 CLI 与恢复过程；单份 checklist state，不补写外部 skill，不假造执行结果。
+
+脚本设计完成后先落实本地 `--help`/schema，再在实施说明写真实命令；本规划不杜撰这些工具的现有CLI。
+
+提交按可回归纵向切片，spec与对应实现/manifest同一检查点；投影PNG必须在geometry/UV确定后生成，不按旧文“纹理先于模型”提交。只stage本轮文件；不自动提交用户原有改动。
